@@ -29,9 +29,17 @@
 #include <stdarg.h>
 #include <sys/types.h>
 #include <stdlib.h>
-#include <stdbool.h>
+
 #include <stdarg.h>
 #include <stddef.h>
+
+#if _MSC_VER < 1900
+typedef int bool;
+#	define false 0
+#	define true 1
+#else
+#   include <stdbool.h>
+#endif
 
 #include "pslr_scsi.h"
 
@@ -76,7 +84,7 @@ char **get_drives(int *driveNum) {
     return ret;
 }
 
-pslr_result get_drive_info(char* driveName, int* hDevice,
+pslr_result get_drive_info(char* driveName, FDTYPE * hDevice,
                            char* vendorId, int vendorIdSizeMax,
                            char* productId, int productIdSizeMax
                           ) {
@@ -96,13 +104,22 @@ pslr_result get_drive_info(char* driveName, int* hDevice,
 
     snprintf( fullDriveName, 7, "\\\\.\\%s:", driveName);
 
-    hDrive = CreateFile(fullDriveName,
-                        GENERIC_READ | GENERIC_WRITE,
-                        FILE_SHARE_WRITE,
-                        NULL,
-                        OPEN_EXISTING,
-                        0,
-                        NULL);
+#ifdef _WIN64
+	wchar_t fullDriveName_wchar[20];
+	size_t convertedCharsCount;
+	mbstowcs_s(&convertedCharsCount, fullDriveName_wchar, 20, fullDriveName, strlen(fullDriveName) + 1); //Plus null
+	LPWSTR fullDriveName_conv = fullDriveName_wchar;
+#else
+	char* fullDriveName_conv = fullDriveName;
+#endif
+
+	hDrive = CreateFile(fullDriveName_conv,
+		GENERIC_READ | GENERIC_WRITE,
+		FILE_SHARE_WRITE,
+		NULL,
+		OPEN_EXISTING,
+		0,
+		NULL);
 
     if (hDrive != INVALID_HANDLE_VALUE) {
         Status = DeviceIoControl(hDrive,
@@ -119,7 +136,7 @@ pslr_result get_drive_info(char* driveName, int* hDevice,
                 CancelIo(hDrive);
             }
         } else {
-            *hDevice = (int)hDrive;
+            *hDevice = (LONG_PTR)hDrive;
             drive_status = PSLR_OK;
 
             pdescriptor = (STORAGE_DEVICE_DESCRIPTOR *)descriptorBuf;
@@ -146,14 +163,22 @@ pslr_result get_drive_info(char* driveName, int* hDevice,
             }
         }
     }
+	else
+	{
+		*hDevice = INVALID_HANDLE_VALUE;
+	}
     return drive_status;
 }
 
-void close_drive(int *hDevice) {
-    CloseHandle((HANDLE)*hDevice);
+void close_drive(FDTYPE *hDevice) 
+{
+	if (hDevice != INVALID_HANDLE_VALUE)
+	{
+		CloseHandle((HANDLE)*hDevice);
+	}
 }
 
-int scsi_read(int sg_fd, uint8_t *cmd, uint32_t cmdLen,
+int scsi_read(FDTYPE sg_fd, uint8_t *cmd, uint32_t cmdLen,
               uint8_t *buf, uint32_t bufLen) {
     SCSI_PASS_THROUGH_WITH_BUFFER sptdwb;
     DWORD outByte=0;
@@ -205,7 +230,7 @@ int scsi_read(int sg_fd, uint8_t *cmd, uint32_t cmdLen,
     }
 }
 
-int scsi_write(int sg_fd, uint8_t *cmd, uint32_t cmdLen,
+int scsi_write(FDTYPE sg_fd, uint8_t *cmd, uint32_t cmdLen,
                uint8_t *buf, uint32_t bufLen) {
     SCSI_PASS_THROUGH_WITH_BUFFER sptdwb;
     DWORD outByte=0;

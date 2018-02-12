@@ -47,6 +47,8 @@
 #include <dirent.h>
 #include <math.h>
 
+#include <usleep.h>
+
 #include "pslr.h"
 #include "pslr_scsi.h"
 #include "pslr_lens.h"
@@ -71,7 +73,7 @@ void sleep_sec(double sec) {
     for (i=0; i<floor(sec); ++i) {
         usleep(999999); // 1000000 is not working for Windows
     }
-    usleep(1000000*(sec-floor(sec)));
+    usleep(1000000*(sec - floor(sec)));
 }
 
 ipslr_handle_t pslr;
@@ -378,7 +380,7 @@ pslr_handle_t pslr_init( char *model, char *device ) {
         driveNum = 1;
         drives = malloc( driveNum * sizeof(char*) );
         drives[0] = malloc( strlen( device )+1 );
-        strncpy( drives[0], device, strlen( device ) );
+        strncpy_s( drives[0], strlen(device) + 1, device, strlen( device ) );
         drives[0][strlen(device)]='\0';
     }
     DPRINT("driveNum:%d\n",driveNum);
@@ -386,37 +388,51 @@ pslr_handle_t pslr_init( char *model, char *device ) {
     for ( i=0; i<driveNum; ++i ) {
         pslr_result result = get_drive_info( drives[i], &fd, vendorId, sizeof(vendorId), productId, sizeof(productId));
 
-        DPRINT("\tChecking drive:  %s %s %s\n", drives[i], vendorId, productId);
-        if ( find_in_array( valid_vendors, sizeof(valid_vendors)/sizeof(valid_vendors[0]),vendorId) != -1
-                && find_in_array( valid_models, sizeof(valid_models)/sizeof(valid_models[0]), productId) != -1 ) {
-            if ( result == PSLR_OK ) {
-                DPRINT("\tFound camera %s %s\n", vendorId, productId);
-                pslr.fd = fd;
-                if ( model != NULL ) {
-                    // user specified the camera model
-                    camera_name = pslr_camera_name( &pslr );
-                    DPRINT("\tName of the camera: %s\n", camera_name);
-                    if ( str_comparison_i( camera_name, model, strlen( camera_name) ) == 0 ) {
-                        return &pslr;
-                    } else {
-                        DPRINT("\tIgnoring camera %s %s\n", vendorId, productId);
-                        pslr_shutdown ( &pslr );
-                        pslr.id = 0;
-                        pslr.model = NULL;
-                    }
-                } else {
-                    return &pslr;
-                }
-            } else {
-                DPRINT("\tCannot get drive info of Pentax camera. Please do not forget to install the program using 'make install'\n");
-                // found the camera but communication is not possible
-                close_drive( &fd );
-                continue;
-            }
-        } else {
-            close_drive( &fd );
-            continue;
-        }
+		if (result == PSLR_OK)
+		{
+			DPRINT("\tChecking drive:  %s %s %s\n", drives[i], vendorId, productId);
+			if (find_in_array(valid_vendors, sizeof(valid_vendors) / sizeof(valid_vendors[0]), vendorId) != -1
+				&& find_in_array(valid_models, sizeof(valid_models) / sizeof(valid_models[0]), productId) != -1) 
+			{
+				if (result == PSLR_OK) {
+					DPRINT("\tFound camera %s %s\n", vendorId, productId);
+					pslr.fd = fd;
+					if (model != NULL) {
+						// user specified the camera model
+						camera_name = pslr_camera_name(&pslr);
+						DPRINT("\tName of the camera: %s\n", camera_name);
+						if (str_comparison_i(camera_name, model, strlen(camera_name)) == 0) {
+							return &pslr;
+						}
+						else {
+							DPRINT("\tIgnoring camera %s %s\n", vendorId, productId);
+							pslr_shutdown(&pslr);
+							pslr.id = 0;
+							pslr.model = NULL;
+						}
+					}
+					else {
+						return &pslr;
+					}
+				}
+				else {
+					DPRINT("\tCannot get drive info of Pentax camera. Please do not forget to install the program using 'make install'\n");
+					// found the camera but communication is not possible
+					close_drive(&fd);
+					continue;
+				}
+			}
+			else
+			{
+				close_drive(&fd);
+				continue;
+			}
+		}
+		else 
+		{
+			close_drive(&fd);
+			continue;
+		}
     }
     DPRINT("\tcamera not found\n");
     return NULL;
@@ -524,60 +540,60 @@ char *get_white_balance_adjust_str( uint32_t adjust_mg, uint32_t adjust_ba ) {
 
 char *collect_status_info( pslr_handle_t h, pslr_status status ) {
     char *strbuffer = malloc(8192);
-    sprintf(strbuffer,"%-32s: %d\n", "current iso", status.current_iso);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d/%d\n", "current shutter speed", status.current_shutter_speed.nom, status.current_shutter_speed.denom);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d/%d\n", "camera max shutter speed", status.max_shutter_speed.nom, status.max_shutter_speed.denom);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "current aperture", format_rational( status.current_aperture, "%.1f"));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "lens max aperture", format_rational( status.lens_max_aperture, "%.1f"));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "lens min aperture", format_rational( status.lens_min_aperture, "%.1f"));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d/%d\n", "set shutter speed", status.set_shutter_speed.nom, status.set_shutter_speed.denom);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "set aperture", format_rational( status.set_aperture, "%.1f"));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "fixed iso", status.fixed_iso);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d-%d\n", "auto iso", status.auto_iso_min,status.auto_iso_max);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "jpeg quality", status.jpeg_quality);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %dM\n", "jpeg resolution", pslr_get_jpeg_resolution( h, status.jpeg_resolution));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "jpeg image tone", get_pslr_jpeg_image_tone_str(status.jpeg_image_tone));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "jpeg saturation", status.jpeg_saturation);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "jpeg contrast", status.jpeg_contrast);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "jpeg sharpness", status.jpeg_sharpness);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "jpeg hue", status.jpeg_hue);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s mm\n", "zoom", format_rational(status.zoom, "%.2f"));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "focus", status.focus);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "color space", get_pslr_color_space_str(status.color_space));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "image format", get_pslr_image_format_str(status.image_format));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "raw format", get_pslr_raw_format_str(status.raw_format));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "light meter flags", status.light_meter_flags);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "ec", format_rational( status.ec, "%.2f" ) );
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s EV steps\n", "custom ev steps", get_pslr_custom_ev_steps_str(status.custom_ev_steps));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s EV steps\n", "custom sensitivity steps", get_pslr_custom_sensitivity_steps_str(status.custom_sensitivity_steps));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "exposure mode", status.exposure_mode);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "scene mode", get_pslr_scene_mode_str(status.scene_mode));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "user mode flag", status.user_mode_flag);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "ae metering mode", get_pslr_ae_metering_str(status.ae_metering_mode));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "af mode", get_pslr_af_mode_str(status.af_mode));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "af point select", get_pslr_af_point_sel_str(status.af_point_select));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "selected af point", status.selected_af_point);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "focused af point", status.focused_af_point);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "drive mode", get_pslr_drive_mode_str(status.drive_mode));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "auto bracket mode", status.auto_bracket_mode > 0 ? "on" : "off");
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "auto bracket picture count", status.auto_bracket_picture_count);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %d\n", "auto bracket picture counter", status.auto_bracket_picture_counter);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "auto bracket ev", format_rational(status.auto_bracket_ev, "%.2f"));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "shake reduction", status.shake_reduction > 0 ? "on" : "off");
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "white balance mode", get_pslr_white_balance_mode_str(status.white_balance_mode));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "white balance adjust", get_white_balance_adjust_str(status.white_balance_adjust_mg, status.white_balance_adjust_ba));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "flash mode", get_pslr_flash_mode_str(status.flash_mode));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %.2f\n", "flash exposure compensation", (1.0 * status.flash_exposure_compensation/256));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %.2f\n", "manual mode ev", (1.0 * status.manual_mode_ev / 10));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "lens", get_lens_name(status.lens_id1, status.lens_id2));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %.2fV %.2fV %.2fV %.2fV\n", "battery", 0.01 * status.battery_1, 0.01 * status.battery_2, 0.01 * status.battery_3, 0.01 * status.battery_4);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s\n", "buffer mask", int_to_binary(status.bufmask));
+    sprintf_s(strbuffer, 8192, "%-32s: %d\n", "current iso", status.current_iso);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d/%d\n", "current shutter speed", status.current_shutter_speed.nom, status.current_shutter_speed.denom);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d/%d\n", "camera max shutter speed", status.max_shutter_speed.nom, status.max_shutter_speed.denom);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "current aperture", format_rational( status.current_aperture, "%.1f"));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "lens max aperture", format_rational( status.lens_max_aperture, "%.1f"));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "lens min aperture", format_rational( status.lens_min_aperture, "%.1f"));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d/%d\n", "set shutter speed", status.set_shutter_speed.nom, status.set_shutter_speed.denom);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "set aperture", format_rational( status.set_aperture, "%.1f"));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "fixed iso", status.fixed_iso);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d-%d\n", "auto iso", status.auto_iso_min,status.auto_iso_max);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "jpeg quality", status.jpeg_quality);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %dM\n", "jpeg resolution", pslr_get_jpeg_resolution( h, status.jpeg_resolution));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "jpeg image tone", get_pslr_jpeg_image_tone_str(status.jpeg_image_tone));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "jpeg saturation", status.jpeg_saturation);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "jpeg contrast", status.jpeg_contrast);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "jpeg sharpness", status.jpeg_sharpness);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "jpeg hue", status.jpeg_hue);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s mm\n", "zoom", format_rational(status.zoom, "%.2f"));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "focus", status.focus);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "color space", get_pslr_color_space_str(status.color_space));
+	sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "image format", get_pslr_image_format_str(status.image_format));
+	sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "raw format", get_pslr_raw_format_str(status.raw_format));
+	sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "light meter flags", status.light_meter_flags);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "ec", format_rational( status.ec, "%.2f" ) );
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s EV steps\n", "custom ev steps", get_pslr_custom_ev_steps_str(status.custom_ev_steps));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s EV steps\n", "custom sensitivity steps", get_pslr_custom_sensitivity_steps_str(status.custom_sensitivity_steps));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "exposure mode", status.exposure_mode);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "scene mode", get_pslr_scene_mode_str(status.scene_mode));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "user mode flag", status.user_mode_flag);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "ae metering mode", get_pslr_ae_metering_str(status.ae_metering_mode));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "af mode", get_pslr_af_mode_str(status.af_mode));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "af point select", get_pslr_af_point_sel_str(status.af_point_select));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "selected af point", status.selected_af_point);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "focused af point", status.focused_af_point);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "drive mode", get_pslr_drive_mode_str(status.drive_mode));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "auto bracket mode", status.auto_bracket_mode > 0 ? "on" : "off");
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "auto bracket picture count", status.auto_bracket_picture_count);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %d\n", "auto bracket picture counter", status.auto_bracket_picture_counter);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "auto bracket ev", format_rational(status.auto_bracket_ev, "%.2f"));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "shake reduction", status.shake_reduction > 0 ? "on" : "off");
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "white balance mode", get_pslr_white_balance_mode_str(status.white_balance_mode));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "white balance adjust", get_white_balance_adjust_str(status.white_balance_adjust_mg, status.white_balance_adjust_ba));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "flash mode", get_pslr_flash_mode_str(status.flash_mode));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %.2f\n", "flash exposure compensation", (1.0 * status.flash_exposure_compensation/256));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %.2f\n", "manual mode ev", (1.0 * status.manual_mode_ev / 10));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "lens", get_lens_name(status.lens_id1, status.lens_id2));
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %.2fV %.2fV %.2fV %.2fV\n", "battery", 0.01 * status.battery_1, 0.01 * status.battery_2, 0.01 * status.battery_3, 0.01 * status.battery_4);
+    sprintf_s(strbuffer+strlen(strbuffer), 8192-strlen(strbuffer),"%-32s: %s\n", "buffer mask", int_to_binary(status.bufmask));
     return strbuffer;
 }
 
 char *get_hardwired_setting_bool_info( pslr_bool_setting setting) {
     char *strbuffer = malloc(32);
-    sprintf(strbuffer,"%-32s", setting.pslr_setting_status == PSLR_SETTING_STATUS_HARDWIRED ? "\t[hardwired]" : "");
+    sprintf_s(strbuffer, 32,"%-32s", setting.pslr_setting_status == PSLR_SETTING_STATUS_HARDWIRED ? "\t[hardwired]" : "");
     return strbuffer;
 }
 
@@ -585,10 +601,10 @@ char *get_special_setting_info( pslr_setting_status_t setting_status) {
     char *strbuffer = malloc(32);
     switch ( setting_status ) {
         case PSLR_SETTING_STATUS_NA:
-            sprintf(strbuffer,"N/A");
+            sprintf_s(strbuffer, 32, "N/A");
             break;
         case PSLR_SETTING_STATUS_UNKNOWN:
-            sprintf(strbuffer,"Unknown");
+            sprintf_s(strbuffer, 32, "Unknown");
             break;
         default:
             return NULL;
@@ -598,18 +614,26 @@ char *get_special_setting_info( pslr_setting_status_t setting_status) {
 
 char *get_hardwired_setting_uint16_info( pslr_uint16_setting setting) {
     char *strbuffer = malloc(32);
-    sprintf(strbuffer,"%-32s", setting.pslr_setting_status == PSLR_SETTING_STATUS_HARDWIRED ? "\t[hardwired]" : "");
+    sprintf_s(strbuffer, 32, "%-32s", setting.pslr_setting_status == PSLR_SETTING_STATUS_HARDWIRED ? "\t[hardwired]" : "");
     return strbuffer;
 }
 
 char *collect_settings_info( pslr_handle_t h, pslr_settings settings ) {
     char *strbuffer = malloc(8192);
-    sprintf(strbuffer,"%-32s: %-8s%s\n", "one push bracketing", get_special_setting_info(settings.one_push_bracketing.pslr_setting_status) ?: settings.one_push_bracketing.value ? "on" : "off", get_hardwired_setting_bool_info(settings.one_push_bracketing));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s%s\n", "bulb mode", get_special_setting_info(settings.bulb_mode_press_press.pslr_setting_status) ?: settings.bulb_mode_press_press.value ? "press-press" : "press-hold", get_hardwired_setting_bool_info(settings.bulb_mode_press_press));
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %-8s%s\n", "bulb timer", get_special_setting_info(settings.bulb_timer.pslr_setting_status) ?: settings.bulb_timer.value ? "on" : "off", get_hardwired_setting_bool_info(settings.bulb_timer));
+	sprintf_s( strbuffer, 8192, "%-32s: %-8s%s\n", "one push bracketing", 
+		get_special_setting_info( settings.one_push_bracketing.pslr_setting_status ) ? get_special_setting_info(settings.one_push_bracketing.pslr_setting_status) : 
+		settings.one_push_bracketing.value ? "on" : "off", get_hardwired_setting_bool_info(settings.one_push_bracketing) );
+	sprintf_s(strbuffer+strlen(strbuffer), 8192 - strlen(strbuffer), "%-32s: %s%s\n", "bulb mode", 
+		get_special_setting_info(settings.bulb_mode_press_press.pslr_setting_status) ? get_special_setting_info(settings.bulb_mode_press_press.pslr_setting_status) : 
+		settings.bulb_mode_press_press.value ? "press-press" : "press-hold", get_hardwired_setting_bool_info(settings.bulb_mode_press_press));
+	sprintf_s(strbuffer+strlen(strbuffer), 8192 - strlen(strbuffer), "%-32s: %-8s%s\n", "bulb timer", 
+		get_special_setting_info(settings.bulb_timer.pslr_setting_status) ? get_special_setting_info(settings.bulb_timer.pslr_setting_status)  : 
+		settings.bulb_timer.value ? "on" : "off", get_hardwired_setting_bool_info(settings.bulb_timer));
     char *bulb_timer_sec = malloc(32);
-    sprintf(bulb_timer_sec, "%d s", settings.bulb_timer_sec.value);
-    sprintf(strbuffer+strlen(strbuffer),"%-32s: %s%s\n", "bulb timer sec", get_special_setting_info(settings.bulb_timer_sec.pslr_setting_status) ?: bulb_timer_sec, get_hardwired_setting_uint16_info(settings.bulb_timer_sec));
+	sprintf_s(bulb_timer_sec, 32, "%d s", settings.bulb_timer_sec.value);
+	sprintf_s(strbuffer+strlen(strbuffer), 8192 - strlen(strbuffer), "%-32s: %s%s\n", "bulb timer sec", 
+		get_special_setting_info(settings.bulb_timer_sec.pslr_setting_status) ? get_special_setting_info(settings.bulb_timer_sec.pslr_setting_status) : 
+		bulb_timer_sec, get_hardwired_setting_uint16_info(settings.bulb_timer_sec));
     return strbuffer;
 }
 
@@ -1034,7 +1058,7 @@ int pslr_buffer_open(pslr_handle_t h, int bufno, pslr_buffer_type buftype, int b
 
 uint32_t pslr_buffer_read(pslr_handle_t h, uint8_t *buf, uint32_t size) {
     ipslr_handle_t *p = (ipslr_handle_t *) h;
-    int i;
+	uint32_t i;
     uint32_t pos = 0;
     uint32_t seg_offs;
     uint32_t addr;
@@ -1089,7 +1113,7 @@ uint32_t pslr_fullmemory_read(pslr_handle_t h, uint8_t *buf, uint32_t offset, ui
 
 uint32_t pslr_buffer_get_size(pslr_handle_t h) {
     ipslr_handle_t *p = (ipslr_handle_t *) h;
-    int i;
+	uint32_t i;
     uint32_t len = 0;
     for (i = 0; i < p->segment_count; i++) {
         len += p->segments[i].length;
@@ -1578,7 +1602,7 @@ int pslr_get_settings(pslr_handle_t h, pslr_settings *ps) {
 static int _ipslr_write_args(uint8_t cmd_2, ipslr_handle_t *p, int n, ...) {
     va_list ap;
     uint8_t cmd[8] = {0xf0, 0x4f, cmd_2, 0x00, 0x00, 0x00, 0x00, 0x00};
-    uint8_t buf[4 * n];
+    uint8_t* buf = (uint8_t*) malloc( sizeof(uint8_t) * 4 * n );
     FDTYPE fd = p->fd;
     int res;
     int i;
@@ -1588,7 +1612,8 @@ static int _ipslr_write_args(uint8_t cmd_2, ipslr_handle_t *p, int n, ...) {
     va_start(ap, n);
     DPRINT("[C]\t\t\t_ipslr_write_args(cmd_2 = 0x%x, {", cmd_2);
     for (i = 0; i < n; i++) {
-        if (i > 0) {
+        if (i > 0) 
+		{
             DPRINT(", ");
         }
         DPRINT("0x%X", va_arg(ap, uint32_t));
@@ -1602,41 +1627,52 @@ static int _ipslr_write_args(uint8_t cmd_2, ipslr_handle_t *p, int n, ...) {
         for (i = 0; i < n; i++) {
             data = va_arg(ap, uint32_t);
 
-            if (p->model == NULL || !p->model->is_little_endian) {
+            if (p->model == NULL || !p->model->is_little_endian) 
+			{
                 set_uint32_be(data, &buf[4*i]);
-            } else {
+            } else 
+			{
                 set_uint32_le(data, &buf[4*i]);
             }
         }
         cmd[4] = 4 * n;
 
-
         res = scsi_write(fd, cmd, sizeof (cmd), buf, 4 * n);
-        if (res != PSLR_OK) {
+        if (res != PSLR_OK) 
+		{
             va_end(ap);
             return res;
         }
-    } else {
+    } 
+	else 
+	{
         /* Arguments one by one */
-        for (i = 0; i < n; i++) {
+        for (i = 0; i < n; i++) 
+		{
             data = va_arg(ap, uint32_t);
 
-            if (p->model == NULL || !p->model->is_little_endian) {
+            if (p->model == NULL || !p->model->is_little_endian) 
+			{
                 set_uint32_be(data, &buf[0]);
-            } else {
+            } 
+			else 
+			{
                 set_uint32_le(data, &buf[0]);
             }
 
             cmd[4] = 4;
             cmd[2] = i * 4;
             res = scsi_write(fd, cmd, sizeof (cmd), buf, 4);
-            if (res != PSLR_OK) {
+            if (res != PSLR_OK) 
+			{
                 va_end(ap);
+				free(buf);
                 return res;
             }
         }
     }
     va_end(ap);
+	free(buf);
     return PSLR_OK;
 }
 
@@ -1716,8 +1752,8 @@ static int get_result(FDTYPE fd) {
 static int read_result(FDTYPE fd, uint8_t *buf, uint32_t n) {
     DPRINT("[C]\t\t\tread_result(0x%x, size=%d)\n", fd, n);
     uint8_t cmd[8] = {0xf0, 0x49, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    int r;
-    int i;
+	uint32_t r;
+	uint32_t i;
     set_uint32_le(n, &cmd[4]);
     r = scsi_read(fd, cmd, sizeof (cmd), buf, n);
     if (r != n) {
@@ -1746,7 +1782,7 @@ static int read_result(FDTYPE fd, uint8_t *buf, uint32_t n) {
 
 char *copyright() {
     char *ret = malloc(sizeof(char)*1024);
-    sprintf(ret, "Copyright (C) 2011-2018 Andras Salamon\n\
+    sprintf_s(ret, sizeof(char) * 1024, "Copyright (C) 2011-2018 Andras Salamon\n\
 \n\
 Based on:\n\
 pslr-shoot (C) 2009 Ramiro Barreiro\n\

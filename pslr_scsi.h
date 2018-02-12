@@ -43,7 +43,7 @@ extern void write_debug( const char* message, ... );
 #include <gphoto2/gphoto2-log.h>
 #define DPRINT(x...) gp_log (GP_LOG_DEBUG, "pentax", x)
 #else
-#define DPRINT(x...) write_debug(x)
+#define DPRINT(...) write_debug(__VA_ARGS__)
 #endif
 #endif
 
@@ -63,8 +63,11 @@ typedef enum {
 typedef struct _GPPort GPPort;
 #define FDTYPE GPPort*
 #else
-/* classic UNIX style handle */
-#define FDTYPE int
+#	ifdef _WIN64
+#		define FDTYPE __int64
+#	else
+#		define FDTYPE __int32
+#	endif
 #endif
 
 int scsi_read(FDTYPE sg_fd, uint8_t *cmd, uint32_t cmdLen,
