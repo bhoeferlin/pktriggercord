@@ -12,6 +12,7 @@ extern "C"
 #include <iostream>
 #include <assert.h>
 #include <time.h>
+#include <map>
 
 
 
@@ -71,7 +72,7 @@ public:
 	bool connect(unsigned int timeout_sec);
 	void disconnect();
 	bool isConnected() const;
-
+	uint32_t registerConnectionChangedCallback(const std::function<void(bool)>& callback);
 
 	std::string getCameraName();
 
@@ -83,9 +84,15 @@ public:
 	uint32_t getISO(bool forceStatusUpdate);
 	bool setISO(uint32_t isoValue);
 	std::vector<uint32_t> getISOSteps(bool forceStatusUpdate = false);
+	uint32_t registerISOChangedCallback(const std::function<void(uint32_t)>& callback);
 
+
+	void unregisterCallback(const uint32_t& callbackIdentifier);
 
 private:
+
+	void processStatusCallbacks();
+
 
 	PentaxTetherLib::Options options_;
 
@@ -93,8 +100,14 @@ private:
 
 	std::mutex statusMutex_;
 	std::shared_ptr<pslr_status> currentStatus_{ nullptr };
+	std::shared_ptr<pslr_status> lastStatus_{ nullptr };
 	time_t statusUpdateTime_{ 0 };
 
+	// callbacks
+	std::mutex callbackMutex_;
+	uint32_t nextCallbackIdentifier_{0};
+	std::map< uint32_t, std::function<void(bool)> > connectionCallbacks_;
+	std::map< uint32_t, std::function<void(uint32_t)> > isoCallbacks_;
 
 };
 
@@ -106,6 +119,13 @@ PentaxTetherLib::PentaxTetherLib( const PentaxTetherLib::Options& options )
 	: impl_(new Impl(options))
 {
 }
+
+
+
+PentaxTetherLib::~PentaxTetherLib()
+{
+}
+
 
 
 bool PentaxTetherLib::connect(unsigned int timeout_sec)
@@ -123,6 +143,18 @@ void PentaxTetherLib::disconnect()
 bool PentaxTetherLib::isConnected() const
 {
 	return impl_->isConnected();
+}
+
+
+void PentaxTetherLib::unregisterCallback(const uint32_t& callbackIdentifier)
+{
+	impl_->unregisterCallback(callbackIdentifier);
+}
+
+
+uint32_t PentaxTetherLib::registerConnectionChangedCallback(const std::function<void(bool)>& callback)
+{
+	return impl_->registerConnectionChangedCallback(callback);
 }
 
 
@@ -175,6 +207,16 @@ std::vector<uint32_t> PentaxTetherLib::getISOSteps()
 }
 
 
+uint32_t PentaxTetherLib::registerISOChangedCallback(const std::function<void(uint32_t)>& callback)
+{
+	return impl_->registerISOChangedCallback(callback);
+}
+
+
+
+
+
+
 /////////////////// Implementation Declaration
 
 
@@ -191,6 +233,24 @@ PentaxTetherLib::Impl::~Impl()
 	{
 		pslr_disconnect(camhandle_);
 		pslr_shutdown(camhandle_);
+	}
+}
+
+
+
+void PentaxTetherLib::Impl::processStatusCallbacks()
+{
+	//! ISO callback
+	if (isoCallbacks_.size() > 0 && currentStatus_ != nullptr)
+	{
+		if (lastStatus_ == nullptr || currentStatus_->fixed_iso != lastStatus_->fixed_iso)
+		{
+			std::lock_guard<std::mutex> lock(callbackMutex_);
+			for (const auto& callback : isoCallbacks_)
+			{
+				callback.second(currentStatus_->fixed_iso);
+			}
+		}
 	}
 }
 
@@ -216,8 +276,12 @@ std::shared_ptr<pslr_status> PentaxTetherLib::Impl::pollStatus(bool forceStatusU
 			}
 			else
 			{
+				lastStatus_ = std::move(currentStatus_);
 				currentStatus_ = std::move(status);
 				statusUpdateTime_ = now;
+
+				processStatusCallbacks();
+
 				return currentStatus_;
 			}
 		}
@@ -282,6 +346,13 @@ bool PentaxTetherLib::Impl::connect(unsigned int timeout_sec)
 	if (camhandle_)
 	{
 		pslr_connect(camhandle_);
+
+		// Inform listeners
+		std::lock_guard<std::mutex> lock(callbackMutex_);
+		for (const auto& callback : connectionCallbacks_)
+		{
+			callback.second(true);
+		}
 		return true;
 	}
 
@@ -296,6 +367,13 @@ void PentaxTetherLib::Impl::disconnect()
 	{
 		pslr_disconnect(camhandle_);
 	}
+
+	// Inform listeners
+	std::lock_guard<std::mutex> lock(callbackMutex_);
+	for (const auto& callback : connectionCallbacks_)
+	{
+		callback.second(false);
+	}
 }
 
 
@@ -303,6 +381,14 @@ void PentaxTetherLib::Impl::disconnect()
 bool PentaxTetherLib::Impl::isConnected() const
 {
 	return camhandle_ != nullptr;
+}
+
+
+
+void PentaxTetherLib::Impl::unregisterCallback(const uint32_t& callbackIdentifier)
+{
+	connectionCallbacks_.erase(callbackIdentifier);
+	isoCallbacks_.erase(callbackIdentifier);
 }
 
 
@@ -370,8 +456,9 @@ uint32_t PentaxTetherLib::Impl::executeShutter()
 
 			//assert(status_postShot->bufmask != status_preShot->bufmask);
 
-			uint32_t newBuffers = status_postShot->bufmask; // (status_postShot->bufmask ^ status_preShot->bufmask) & status_postShot->bufmask;
-			//assert(newBuffers > 0);
+			uint32_t newBuffers = status_postShot->bufmask; 
+			//uint32_t newBuffers = (status_postShot->bufmask ^ status_preShot->bufmask) & status_postShot->bufmask;
+															//assert(newBuffers > 0);
 
 			int tmpBufferIndex = PentaxTetherLib::InvalidBufferIndex;
 			for (; tmpBufferIndex >= 0; --tmpBufferIndex)
@@ -433,9 +520,13 @@ std::vector<uint8_t> PentaxTetherLib::Impl::getImage(int bufferIndex, ImageForma
 		imageData.resize(dataSize);
 		uint32_t sumBytesRead = 0;
 		uint8_t buffer[65536];
-		for (uint32_t bytesRead = 0; bytesRead > 0; sumBytesRead += bytesRead)
+		for (uint32_t bytesRead = 0; true; sumBytesRead += bytesRead)
 		{
 			bytesRead = pslr_buffer_read(camhandle_, buffer, sizeof(buffer));
+			if (bytesRead == 0)
+			{
+				break;
+			}
 			memcpy(&imageData[sumBytesRead], &buffer[0], bytesRead);
 
 			if (progressCallback)
@@ -447,7 +538,7 @@ std::vector<uint8_t> PentaxTetherLib::Impl::getImage(int bufferIndex, ImageForma
 
 	}
 
-	return imageData;
+	return std::move(imageData);
 }
 
 
@@ -540,6 +631,23 @@ std::vector<uint32_t> PentaxTetherLib::Impl::getISOSteps(bool forceStatusUpdate)
 	return isoTable;
 }
 
+
+uint32_t PentaxTetherLib::Impl::registerISOChangedCallback(const std::function<void(uint32_t)>& callback)
+{
+	std::lock_guard<std::mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	isoCallbacks_.insert({ id, callback });
+	return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerConnectionChangedCallback(const std::function<void(bool)>& callback)
+{
+	std::lock_guard<std::mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	connectionCallbacks_.insert({ id, callback });
+	return id;
+}
 
 
 

@@ -59,26 +59,32 @@ public:
 
 
 	PentaxTetherLib::PentaxTetherLib(const PentaxTetherLib::Options& options);
-	PentaxTetherLib::~PentaxTetherLib() = default;
-	PentaxTetherLib::PentaxTetherLib(PentaxTetherLib &&) noexcept = default;
-	PentaxTetherLib& PentaxTetherLib::operator=(PentaxTetherLib &&) noexcept = default;
+	PentaxTetherLib::~PentaxTetherLib();
+	PentaxTetherLib::PentaxTetherLib(PentaxTetherLib &&) noexcept = delete;
+	PentaxTetherLib& PentaxTetherLib::operator=(PentaxTetherLib &&) noexcept = delete;
 
 	bool connect(unsigned int timeout_ms);
 	void disconnect();
-
 	bool isConnected() const;
+	uint32_t registerConnectionChangedCallback(const std::function<void(bool)>& callback);
+
+
 	std::string getCameraName();
 	
 	// properties
 	uint32_t getISO( bool forceStatusUpdate = false );
 	bool setISO(uint32_t isoValue);
 	std::vector<uint32_t> getISOSteps();
+	uint32_t registerISOChangedCallback( const std::function<void(uint32_t)>& callback );
 
 	// actions
 	bool executeFocus();
 	uint32_t executeShutter();
 
 	std::vector<uint8_t> getImage( int bufferIndex, ImageFormat format = IF_CURRENT_CAM_SETTING, JpgQuality jpgQuality = JPEG_CURRENT_CAM_SETTING, ImageResolution resolution = RES_CURRENT_CAM_SETTING, std::function<void(float)> progressCallback = nullptr );
+
+
+	void unregisterCallback(const uint32_t& callbackIdentifier);
 
 
 

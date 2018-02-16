@@ -180,17 +180,21 @@ const char* pslr_scene_mode_str[PSLR_SCENE_MODE_MAX] = {
 
 // case insenstive comparison
 // strnicmp
-int str_comparison_i (const char *s1, const char *s2, int n) {
-    if ( s1 == NULL ) {
+int str_comparison_i (const char *s1, const char *s2, size_t n) 
+{
+    if ( s1 == NULL ) 
+    {
         return s2 == NULL ? 0 : -(*s2);
     }
-    if (s2 == NULL) {
+    if (s2 == NULL) 
+    {
         return *s1;
     }
 
-    char c1='\0', c2='\0';
+    char c1='\0';  
+    char c2='\0';
     int length=0;
-    while ( length<n && (c1 = tolower (*s1)) == (c2 = tolower (*s2))) {
+    while ( length < n && (c1 = tolower (*s1)) == (c2 = tolower (*s2))) {
         if (*s1 == '\0') {
             break;
         }
@@ -221,7 +225,7 @@ const char *get_pslr_str( const char** array, int length, int value ) {
         return array[value];
     } else {
         char *ret = malloc(128);
-        sprintf (ret, "Unknown value: %d", value);
+        sprintf_s (ret, 128, "Unknown value: %d", value);
         return ret;
     }
 }
