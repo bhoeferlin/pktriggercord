@@ -80,6 +80,7 @@ public:
 	uint32_t executeShutter();
 
 	std::vector<uint8_t> getImage(int bufferIndex, ImageFormat format, JpgQuality jpgQuality, ImageResolution resolution, std::function<void(float)> progressCallback);
+	std::vector<uint8_t> getPreviewImage(int bufferIndex);
 
 	uint32_t getISO(bool forceStatusUpdate);
 	bool setISO(uint32_t isoValue);
@@ -186,6 +187,12 @@ std::vector<uint8_t> PentaxTetherLib::getImage
 )
 {
 	return impl_->getImage(bufferIndex, format, jpgQuality, resolution, progressCallback);
+}
+
+
+std::vector<uint8_t> PentaxTetherLib::getPreviewImage(int bufferIndex)
+{
+	return impl_->getPreviewImage(bufferIndex);
 }
 
 
@@ -480,6 +487,29 @@ uint32_t PentaxTetherLib::Impl::executeShutter()
 }
 
 
+
+std::vector<uint8_t> PentaxTetherLib::Impl::getPreviewImage(int bufferIndex)
+{
+	std::vector<uint8_t> imageData;
+
+	if (!isConnected())
+	{
+		return imageData;
+	}
+
+	uint8_t *imageBuffer;
+	uint32_t imageSize;
+
+
+	int result = pslr_get_buffer(camhandle_, bufferIndex, PSLR_BUF_PREVIEW, 4, &imageBuffer, &imageSize);
+	if (testResult(result)) 
+	{
+		imageData.resize(imageSize);
+		std::copy(imageBuffer, imageBuffer + imageSize, imageData.begin());
+	}
+
+	return imageData;
+}
 
 
 std::vector<uint8_t> PentaxTetherLib::Impl::getImage(int bufferIndex, ImageFormat format, JpgQuality jpgQuality, ImageResolution resolution, std::function<void(float)> progressCallback)

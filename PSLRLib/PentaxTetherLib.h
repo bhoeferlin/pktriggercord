@@ -83,6 +83,7 @@ public:
 
 	std::vector<uint8_t> getImage( int bufferIndex, ImageFormat format = IF_CURRENT_CAM_SETTING, JpgQuality jpgQuality = JPEG_CURRENT_CAM_SETTING, ImageResolution resolution = RES_CURRENT_CAM_SETTING, std::function<void(float)> progressCallback = nullptr );
 
+	std::vector<uint8_t> getPreviewImage(int bufferIndex);
 
 	void unregisterCallback(const uint32_t& callbackIdentifier);
 
