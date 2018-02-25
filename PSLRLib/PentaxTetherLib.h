@@ -45,15 +45,85 @@ public:
 		RES_XS = 3
 	};
 
+	enum ExposureMode 
+	{
+		EXPOSURE_MODE_INVALID = -2,
+		EXPOSURE_MODE_GREEN = 0,
+		EXPOSURE_MODE_P,
+		EXPOSURE_MODE_SV,
+		EXPOSURE_MODE_TV,
+		EXPOSURE_MODE_AV,
+		EXPOSURE_MODE_TAV,
+		EXPOSURE_MODE_M,
+		EXPOSURE_MODE_B,
+		EXPOSURE_MODE_X
+	};
+
 	struct Options
 	{
 		// options - to be made configurable
-		bool reconnect_{ true };
-		unsigned int reconnectionTimeout_{ 60 };
+		bool reconnect{ true };
+		unsigned int reconnectionTimeout{ 60 };
 		double statusMaxAge_sec{ 0.5 };
 	};
 
+	struct ISOSettings
+	{
+		uint32_t fixedISOValue{ 0 };
+		uint32_t autoMinimumISOValue{ 0 };
+		uint32_t autoMaximumISOValue{ 0 };
+		bool isoFixed() { return fixedISOValue > 0; };
+		bool isValid() { return (fixedISOValue > 0) ^ (autoMinimumISOValue > 0 && autoMaximumISOValue > 0 && autoMinimumISOValue <= autoMinimumISOValue); };
 
+	};
+
+	template<typename T>
+	struct Rational
+	{
+		static_assert(std::is_integral<T>::value, "Integer type expected!");
+
+		Rational() : nominator(0), denominator(0) {};
+		Rational(T nom, T den) : nominator(nom), denominator(den) {};
+
+		T nominator;
+		T denominator;
+
+		double toDouble() const
+		{
+			if (denominator != 0.0)
+			{
+				return static_cast<double>(nominator) / static_cast<double>(denominator);
+			}
+			else
+			{
+				return std::numeric_limits<double>::quiet_NaN();
+			}
+		}
+
+
+		bool isInvalid() const
+		{
+			return nominator == 0 && denominator == 0;
+		}
+
+		bool operator== (const PentaxTetherLib::Rational<T>& a) const
+		{
+			if (a.isInvalid() && this->isInvalid())
+			{
+				// Test for invalid passes - all other rationals with denminator zero will fail this equality test
+				return true;
+			}
+			else
+			{
+				return a.toDouble() == this->toDouble();
+			}
+		}
+
+		bool operator!= (const PentaxTetherLib::Rational<T>& a) const
+		{
+			return !(*this == a);
+		}
+	};
 
 	static const uint32_t InvalidBufferIndex{ 8 * sizeof(uint16_t) };
 
@@ -70,12 +140,28 @@ public:
 
 
 	std::string getCameraName();
+	std::string getLensType();
 	
 	// properties
 	uint32_t getISO( bool forceStatusUpdate = false );
-	bool setISO(uint32_t isoValue);
+	bool setFixedISO(uint32_t isoValue);
+	bool setAutoISORange(uint32_t minISOValue, uint32_t maxISOValue);
+	ISOSettings getISOSettings();
 	std::vector<uint32_t> getISOSteps();
 	uint32_t registerISOChangedCallback( const std::function<void(uint32_t)>& callback );
+
+	PentaxTetherLib::Rational<uint32_t> getAperture(bool forceStatusUpdate = false);
+	bool setAperture(const PentaxTetherLib::Rational<uint32_t>& apertureValue);
+	std::vector<PentaxTetherLib::Rational<uint32_t>> getApertureSteps();
+	uint32_t registerApertureChangedCallback(const std::function<void(const PentaxTetherLib::Rational<uint32_t>&)>& callback);
+
+
+	std::vector<PentaxTetherLib::Rational<uint32_t>> getShutterSpeedSteps();
+
+
+	PentaxTetherLib::ExposureMode getExposureMode();
+	uint32_t registerExposureModeChangedCallback(const std::function<void(const PentaxTetherLib::ExposureMode&)>& callback);
+
 
 	// actions
 	bool executeFocus();

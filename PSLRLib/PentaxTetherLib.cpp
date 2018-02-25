@@ -6,6 +6,7 @@ extern "C"
 	bool warnings = false;
 
 #include "../pslr.h"
+#include "../pslr_lens.h"
 }
 
 #include <time.h>
@@ -26,7 +27,7 @@ int main()
 		std::cout << "Connected with: " << tetherLib.getCameraName() << std::endl;
 		std::cout << "ISO: " << tetherLib.getISO() << std::endl;
 
-		tetherLib.setISO(100);
+		tetherLib.setFixedISO(100);
 		std::this_thread::sleep_for(std::chrono::seconds(2));
 		std::cout << "ISO: " << tetherLib.getISO() << std::endl;
 
@@ -75,6 +76,8 @@ public:
 	uint32_t registerConnectionChangedCallback(const std::function<void(bool)>& callback);
 
 	std::string getCameraName();
+	std::string getLensType();
+
 
 	bool executeFocus();
 	uint32_t executeShutter();
@@ -82,10 +85,22 @@ public:
 	std::vector<uint8_t> getImage(int bufferIndex, ImageFormat format, JpgQuality jpgQuality, ImageResolution resolution, std::function<void(float)> progressCallback);
 	std::vector<uint8_t> getPreviewImage(int bufferIndex);
 
+	PentaxTetherLib::ExposureMode getExposureMode(bool forceStatusUpdate = false);
+	uint32_t registerExposureModeChangedCallback(const std::function<void(const PentaxTetherLib::ExposureMode&)>& callback);
+
 	uint32_t getISO(bool forceStatusUpdate);
-	bool setISO(uint32_t isoValue);
+	bool setFixedISO(uint32_t isoValue);
+	bool setAutoISORange(uint32_t minISOValue, uint32_t maxISOValue);
+	PentaxTetherLib::ISOSettings getISOSettings(bool forceStatusUpdate);
 	std::vector<uint32_t> getISOSteps(bool forceStatusUpdate = false);
 	uint32_t registerISOChangedCallback(const std::function<void(uint32_t)>& callback);
+
+	PentaxTetherLib::Rational<uint32_t> getAperture(bool forceStatusUpdate);
+	bool setAperture(const PentaxTetherLib::Rational<uint32_t>& apertureValue);
+	std::vector<PentaxTetherLib::Rational<uint32_t>> getApertureSteps(bool forceStatusUpdate = false);
+	uint32_t registerApertureChangedCallback(const std::function<void(const PentaxTetherLib::Rational<uint32_t>&)>& callback);
+
+	std::vector<PentaxTetherLib::Rational<uint32_t>> getShutterSpeedSteps(bool forceStatusUpdate = false);
 
 
 	void unregisterCallback(const uint32_t& callbackIdentifier);
@@ -94,21 +109,28 @@ private:
 
 	void processStatusCallbacks();
 
+	// conversions
+	static PentaxTetherLib::Rational<uint32_t> fromPSLR(const pslr_rational_t& r);
+	static pslr_rational_t toPSLR(const PentaxTetherLib::Rational<uint32_t>& r);
+	static PentaxTetherLib::ExposureMode fromPSLR(const pslr_gui_exposure_mode_t& e);
+	static pslr_gui_exposure_mode_t toPSLR(const PentaxTetherLib::ExposureMode& e);
 
 	PentaxTetherLib::Options options_;
 
 	void* camhandle_{ nullptr };
 
-	std::mutex statusMutex_;
+	std::recursive_mutex statusMutex_;
 	std::shared_ptr<pslr_status> currentStatus_{ nullptr };
 	std::shared_ptr<pslr_status> lastStatus_{ nullptr };
 	time_t statusUpdateTime_{ 0 };
 
 	// callbacks
-	std::mutex callbackMutex_;
+	std::recursive_mutex callbackMutex_;
 	uint32_t nextCallbackIdentifier_{0};
 	std::map< uint32_t, std::function<void(bool)> > connectionCallbacks_;
+	std::map< uint32_t, std::function<void(const PentaxTetherLib::ExposureMode&)> > exposureModeCallbacks_;
 	std::map< uint32_t, std::function<void(uint32_t)> > isoCallbacks_;
+	std::map< uint32_t, std::function<void(const PentaxTetherLib::Rational<uint32_t>&)> > apertureCallbacks_;
 
 };
 
@@ -165,6 +187,12 @@ std::string PentaxTetherLib::getCameraName()
 }
 
 
+std::string PentaxTetherLib::getLensType()
+{
+	return impl_->getLensType();
+}
+
+
 bool PentaxTetherLib::executeFocus()
 {
 	return impl_->executeFocus();
@@ -202,9 +230,21 @@ uint32_t PentaxTetherLib::getISO(bool forceStatusUpdate)
 }
 
 
-bool PentaxTetherLib::setISO(uint32_t isoValue)
+bool PentaxTetherLib::setFixedISO(uint32_t isoValue)
 {
-	return impl_->setISO(isoValue);
+	return impl_->setFixedISO(isoValue);
+}
+
+
+bool PentaxTetherLib::setAutoISORange(uint32_t minISOValue, uint32_t maxISOValue)
+{
+	return impl_->setAutoISORange(minISOValue, maxISOValue);
+}
+
+
+PentaxTetherLib::ISOSettings PentaxTetherLib::getISOSettings()
+{
+	return impl_->getISOSettings(false);
 }
 
 
@@ -220,7 +260,46 @@ uint32_t PentaxTetherLib::registerISOChangedCallback(const std::function<void(ui
 }
 
 
+PentaxTetherLib::Rational<uint32_t> PentaxTetherLib::getAperture(bool forceStatusUpdate)
+{
+	return impl_->getAperture(forceStatusUpdate);
+}
 
+
+bool PentaxTetherLib::setAperture( const PentaxTetherLib::Rational<uint32_t>& apertureValue)
+{
+	return impl_->setAperture(apertureValue);
+}
+
+
+std::vector<PentaxTetherLib::Rational<uint32_t>> PentaxTetherLib::getApertureSteps()
+{
+	return impl_->getApertureSteps(false);
+}
+
+
+uint32_t PentaxTetherLib::registerApertureChangedCallback(const std::function<void(const PentaxTetherLib::Rational<uint32_t>&)>& callback)
+{
+	return impl_->registerApertureChangedCallback(callback);
+}
+
+
+std::vector<PentaxTetherLib::Rational<uint32_t>> PentaxTetherLib::getShutterSpeedSteps()
+{
+	return impl_->getShutterSpeedSteps(false);
+}
+
+
+PentaxTetherLib::ExposureMode PentaxTetherLib::getExposureMode()
+{
+	return impl_->getExposureMode(false);
+}
+
+
+uint32_t PentaxTetherLib::registerExposureModeChangedCallback(const std::function<void(const PentaxTetherLib::ExposureMode&)>& callback)
+{
+	return impl_->registerExposureModeChangedCallback(callback);
+}
 
 
 
@@ -247,15 +326,41 @@ PentaxTetherLib::Impl::~Impl()
 
 void PentaxTetherLib::Impl::processStatusCallbacks()
 {
+	//! User Mode callback
+	if (exposureModeCallbacks_.size() > 0 && currentStatus_ != nullptr)
+	{
+		if (lastStatus_ == nullptr || currentStatus_->exposure_mode != lastStatus_->exposure_mode)
+		{
+			std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+			for (const auto& callback : exposureModeCallbacks_)
+			{
+				callback.second(fromPSLR(static_cast<pslr_gui_exposure_mode_t>(currentStatus_->exposure_mode)));
+			}
+		}
+	}
+
 	//! ISO callback
 	if (isoCallbacks_.size() > 0 && currentStatus_ != nullptr)
 	{
-		if (lastStatus_ == nullptr || currentStatus_->fixed_iso != lastStatus_->fixed_iso)
+		if (lastStatus_ == nullptr || currentStatus_->current_iso != lastStatus_->current_iso)
 		{
-			std::lock_guard<std::mutex> lock(callbackMutex_);
+			std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
 			for (const auto& callback : isoCallbacks_)
 			{
-				callback.second(currentStatus_->fixed_iso);
+				callback.second(currentStatus_->current_iso);
+			}
+		}
+	}
+
+	//! Aperture callback
+	if (apertureCallbacks_.size() > 0 && currentStatus_ != nullptr)
+	{
+		if (lastStatus_ == nullptr || fromPSLR(currentStatus_->current_aperture) != fromPSLR(lastStatus_->current_aperture))
+		{
+			std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+			for (const auto& callback : apertureCallbacks_)
+			{
+				callback.second(fromPSLR( currentStatus_->current_aperture ));
 			}
 		}
 	}
@@ -270,7 +375,7 @@ std::shared_ptr<pslr_status> PentaxTetherLib::Impl::pollStatus(bool forceStatusU
 		time_t now;
 		time(&now);
 
-		std::lock_guard<std::mutex> lock(statusMutex_);
+		std::lock_guard<std::recursive_mutex> lock(statusMutex_);
 		if (forceStatusUpdate || difftime(now, statusUpdateTime_) > options_.statusMaxAge_sec)
 		{
 			std::shared_ptr<pslr_status> status = std::make_shared<pslr_status>();
@@ -308,9 +413,9 @@ bool PentaxTetherLib::Impl::testResult(const int& result)
 		return true;
 	case PSLR_DEVICE_ERROR:
 		camhandle_ = nullptr;
-		if (options_.reconnect_)
+		if (options_.reconnect)
 		{
-			connect(options_.reconnectionTimeout_);
+			connect(options_.reconnectionTimeout);
 		}
 		return false;
 	case PSLR_SCSI_ERROR:
@@ -355,7 +460,7 @@ bool PentaxTetherLib::Impl::connect(unsigned int timeout_sec)
 		pslr_connect(camhandle_);
 
 		// Inform listeners
-		std::lock_guard<std::mutex> lock(callbackMutex_);
+		std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
 		for (const auto& callback : connectionCallbacks_)
 		{
 			callback.second(true);
@@ -376,7 +481,7 @@ void PentaxTetherLib::Impl::disconnect()
 	}
 
 	// Inform listeners
-	std::lock_guard<std::mutex> lock(callbackMutex_);
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
 	for (const auto& callback : connectionCallbacks_)
 	{
 		callback.second(false);
@@ -395,7 +500,9 @@ bool PentaxTetherLib::Impl::isConnected() const
 void PentaxTetherLib::Impl::unregisterCallback(const uint32_t& callbackIdentifier)
 {
 	connectionCallbacks_.erase(callbackIdentifier);
+	exposureModeCallbacks_.erase(callbackIdentifier);
 	isoCallbacks_.erase(callbackIdentifier);
+	apertureCallbacks_.erase(callbackIdentifier);
 }
 
 
@@ -409,6 +516,23 @@ std::string PentaxTetherLib::Impl::getCameraName()
 	}
 	return camName;
 }
+
+
+
+std::string PentaxTetherLib::Impl::getLensType()
+{
+	std::string lensName = "Not recognized";
+	if (isConnected())
+	{
+		auto status = pollStatus(false);
+		if (nullptr != status)
+		{
+			lensName = std::string(get_lens_name(status->lens_id1, status->lens_id2));
+		}
+	}
+	return lensName;
+}
+
 
 
 
@@ -445,7 +569,7 @@ uint32_t PentaxTetherLib::Impl::executeShutter()
 	bool result = pslr_shutter(camhandle_);
 	if (result == PSLR_OK)
 	{
-		std::this_thread::sleep_for(std::chrono::seconds(1));
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
 		if (pslr_get_model_only_limited(camhandle_))
 		{
@@ -572,15 +696,35 @@ std::vector<uint8_t> PentaxTetherLib::Impl::getImage(int bufferIndex, ImageForma
 }
 
 
-bool PentaxTetherLib::Impl::setISO(uint32_t isoValue)
+bool PentaxTetherLib::Impl::setFixedISO(uint32_t isoValue)
 {
 	auto status = pollStatus(true);
 	if(nullptr != status && status->fixed_iso != isoValue)
 	{
+		// Note that camera might also handle invalid iso values by correcting them - however, we don't allow them here.
 		auto validIsoValues = getISOSteps(false);
 		if (std::find(validIsoValues.begin(), validIsoValues.end(), isoValue) != validIsoValues.end())
 		{
-			return testResult( pslr_set_iso(camhandle_, isoValue, 0, 0) );
+			return testResult( pslr_set_iso(camhandle_, isoValue, 0/*autoisomin*/, 0/*autoisomax*/) );
+		}
+	}
+
+	return false;
+}
+
+
+
+bool PentaxTetherLib::Impl::setAutoISORange(uint32_t minISOValue, uint32_t maxISOValue)
+{
+	auto status = pollStatus(true);
+	if (nullptr != status && ( status->auto_iso_min != minISOValue || status->auto_iso_max != maxISOValue) )
+	{
+		// Note that camera might also handle invalid iso values by correcting them - however, we don't allow them here.
+		auto validIsoValues = getISOSteps(false);
+		if ((std::find(validIsoValues.begin(), validIsoValues.end(), minISOValue) != validIsoValues.end()) && 
+			(std::find(validIsoValues.begin(), validIsoValues.end(), maxISOValue) != validIsoValues.end()))
+		{
+			return testResult(pslr_set_iso(camhandle_, 0/*fixediso*/, minISOValue, maxISOValue));
 		}
 	}
 
@@ -597,7 +741,67 @@ uint32_t PentaxTetherLib::Impl::getISO(bool forceStatusUpdate)
 	}
 	else
 	{
-		return status->fixed_iso;
+		return status->current_iso;
+	}
+}
+
+
+PentaxTetherLib::ISOSettings PentaxTetherLib::Impl::getISOSettings(bool forceStatusUpdate)
+{
+	PentaxTetherLib::ISOSettings isoSettings;
+
+	auto status = pollStatus(forceStatusUpdate);
+	if (nullptr != status)
+	{
+		isoSettings.fixedISOValue = status->fixed_iso;
+		isoSettings.autoMaximumISOValue = status->auto_iso_min;
+		isoSettings.autoMinimumISOValue = status->auto_iso_max;
+	}
+
+	return isoSettings;
+}
+
+
+bool PentaxTetherLib::Impl::setAperture(const PentaxTetherLib::Rational<uint32_t>& apertureValue)
+{
+	auto status = pollStatus(true);
+	if (nullptr != status && fromPSLR(status->current_aperture) != apertureValue)
+	{
+		auto validApertureValues = getApertureSteps(false);
+		if (std::find(validApertureValues.begin(), validApertureValues.end(), apertureValue) != validApertureValues.end())
+		{
+			return testResult(pslr_set_aperture(camhandle_, toPSLR( apertureValue )));
+		}
+	}
+
+	return false;
+}
+
+
+PentaxTetherLib::Rational<uint32_t> PentaxTetherLib::Impl::getAperture(bool forceStatusUpdate)
+{
+	auto status = pollStatus(forceStatusUpdate);
+	if (nullptr == status)
+	{
+		return PentaxTetherLib::Rational<uint32_t>();
+	}
+	else
+	{
+		return fromPSLR(status->current_aperture);
+	}
+}
+
+
+PentaxTetherLib::ExposureMode PentaxTetherLib::Impl::getExposureMode(bool forceStatusUpdate)
+{
+	auto status = pollStatus(forceStatusUpdate);
+	if (nullptr == status)
+	{
+		return PentaxTetherLib::EXPOSURE_MODE_INVALID;
+	}
+	else
+	{
+		return fromPSLR( static_cast<pslr_gui_exposure_mode_t>( status->exposure_mode ));
 	}
 }
 
@@ -613,24 +817,21 @@ std::vector<uint32_t> PentaxTetherLib::Impl::getISOSteps(bool forceStatusUpdate)
 	std::vector<uint32_t> isoTable;
 	if (status->custom_sensitivity_steps == PSLR_CUSTOM_SENSITIVITY_STEPS_1EV)
 	{
-		const uint32_t isoTableData[] = {
+		isoTable = {
 			80, 100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1000, 1250, 1600, 2000, 2500,
 			3200, 4000, 5000, 6400, 8000, 10000, 12800, 16000, 20000, 25600, 32000, 40000, 51200, 
 			64000, 80000, 102400 };
-		isoTable = std::vector<uint32_t>(isoTableData, isoTableData + sizeof(isoTableData) / sizeof(isoTableData[0]));
 	}
 	else if (status->custom_ev_steps == PSLR_CUSTOM_EV_STEPS_1_2)
 	{
-		const uint32_t isoTableData[] = {
+		isoTable = {
 			100, 140, 200, 280, 400, 560, 800, 1100, 1600, 2200, 3200, 4500, 6400, 9000, 12800,
 			18000, 25600, 36000, 51200, 72000, 102400 };
-		isoTable = std::vector<uint32_t>(isoTableData, isoTableData + sizeof(isoTableData) / sizeof(isoTableData[0]));
 	}
 	else
 	{
-		const uint32_t isoTableData[] = {
+		isoTable = {
 			100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400 };
-		isoTable = std::vector<uint32_t>(isoTableData, isoTableData + sizeof(isoTableData) / sizeof(isoTableData[0]));
 	}
 
 	// Find particular ISO range wrt camera model
@@ -662,23 +863,149 @@ std::vector<uint32_t> PentaxTetherLib::Impl::getISOSteps(bool forceStatusUpdate)
 }
 
 
-uint32_t PentaxTetherLib::Impl::registerISOChangedCallback(const std::function<void(uint32_t)>& callback)
+
+std::vector<PentaxTetherLib::Rational<uint32_t>> PentaxTetherLib::Impl::getApertureSteps(bool forceStatusUpdate)
 {
-	std::lock_guard<std::mutex> lock(callbackMutex_);
-	uint32_t id = (++nextCallbackIdentifier_);
-	isoCallbacks_.insert({ id, callback });
-	return id;
+	auto status = pollStatus(forceStatusUpdate);
+	if (nullptr == status)
+	{
+		return std::vector<PentaxTetherLib::Rational<uint32_t>>();
+	}
+
+	std::vector< PentaxTetherLib::Rational<uint32_t> > apertureTable = {
+		{10,10}, {11,10}, {12,10}, {14,10}, {16,10}, {17,10}, {18,10}, {20,10}, {22,10}, {24,10}, {25,10}, {28,10}, {32,10}, {35,10}, // this line is not confirmed yet
+		{40,10}, {45,10}, {50,10}, {56,10}, {63,10}, {67,10}, {71,10}, {80,10}, {90,10}, {95,10}, {100,10}, {110,10}, {130,10}, {140,10},
+		{160,10}, {180,10}, {190,10}, {200,10}, {220,10}, {250,10}, {280,10}, {320,10}, {360,10}, {400,10}, 
+		{450,10}, {510,10}, {570,10} };  // this line is not confirmed yet
+
+	size_t lowestApertureIndex  = apertureTable.size();
+	size_t highestApertureIndex = apertureTable.size();
+	for( size_t i = 0; i < apertureTable.size(); ++i )
+	{
+		if (status->lens_min_aperture.nom == apertureTable.at(i).nominator && 
+			status->lens_min_aperture.denom == apertureTable.at(i).denominator)
+		{
+			lowestApertureIndex = i;
+		}
+		if (status->lens_max_aperture.nom == apertureTable.at(i).nominator && 
+			status->lens_max_aperture.denom == apertureTable.at(i).denominator)
+		{
+			highestApertureIndex = i;
+		}
+	}
+
+	if (lowestApertureIndex <= highestApertureIndex && highestApertureIndex < apertureTable.size())
+	{
+		apertureTable.erase(apertureTable.begin() + highestApertureIndex + 1, apertureTable.end());
+		apertureTable.erase(apertureTable.begin(), apertureTable.begin() + lowestApertureIndex);
+
+		return apertureTable;
+	}
+	else
+	{
+		return std::vector<PentaxTetherLib::Rational<uint32_t>>();
+	}
 }
+
+
+std::vector<PentaxTetherLib::Rational<uint32_t>> PentaxTetherLib::Impl::getShutterSpeedSteps(bool forceStatusUpdate)
+{
+	auto status = pollStatus(forceStatusUpdate);
+	if (nullptr == status)
+	{
+		return std::vector<PentaxTetherLib::Rational<uint32_t>>();
+	}
+
+	std::vector< PentaxTetherLib::Rational<uint32_t> > exposureTimeTable;
+	if (status->custom_ev_steps == PSLR_CUSTOM_EV_STEPS_1_2) 
+	{
+		exposureTimeTable = {
+			{ 30, 1 },{ 20, 1 },{ 15, 1 },{ 10, 1 },{ 8 , 1 },{ 6 , 1 },
+			{ 4 , 1 },{ 3 , 1 },{ 2 , 1 },{ 15, 10 },{ 1 , 1 },
+			{ 7 , 10 },{ 5 , 10 },{ 3 , 10 },{ 1 , 4 },{ 1 , 6 },
+			{ 1 , 8 },{ 1 , 10 },{ 1 , 15 },{ 1 , 20 },{ 1 , 30 },
+			{ 1 , 45 },{ 1 , 60 },{ 1 , 90 },{ 1 , 125 },{ 1 , 180 },{ 1 , 250 },
+			{ 1 , 350 },{ 1 , 500 },{ 1 , 750 },{ 1 , 1000 },{ 1 , 1500 },
+			{ 1 , 2000 },{ 1 , 3000 },{ 1 , 4000 },{ 1, 6400 },{ 1, 8000 }
+		};
+	}
+	else 
+	{
+		exposureTimeTable = {
+			{ 30, 1 },{ 25, 1 },{ 20, 1 },{ 15, 1 },{ 13, 1 },{ 10, 1 },{ 8 , 1 },{ 6 , 1 },
+			{ 5 , 1 },{ 4 , 1 },{ 3 , 1 },{ 25, 10 },{ 2 , 1 },{ 16, 10 },{ 13, 10 },{ 1 , 1 },
+			{ 8 , 10 },{ 6 , 10 },{ 5 , 10 },{ 4 , 10 },{ 3 , 10 },{ 1 , 4 },{ 1 , 5 },{ 1 , 6 },
+			{ 1 , 8 },{ 1 , 10 },{ 1 , 13 },{ 1 , 15 },{ 1 , 20 },{ 1 , 25 },{ 1 , 30 },{ 1 , 40 },
+			{ 1 , 50 },{ 1 , 60 },{ 1 , 80 },{ 1 , 100 },{ 1 , 125 },{ 1 , 160 },{ 1 , 200 },{ 1 , 250 },
+			{ 1 , 320 },{ 1 , 400 },{ 1 , 500 },{ 1 , 640 },{ 1 , 800 },{ 1 , 1000 },{ 1 , 1250 },{ 1 , 1600 },
+			{ 1 , 2000 },{ 1 , 2500 },{ 1 , 3200 },{ 1 , 4000 },{ 1 , 5000 },{ 1, 6400 },{ 1, 8000 }
+		};
+	}
+
+	return exposureTimeTable;
+}
+
 
 
 uint32_t PentaxTetherLib::Impl::registerConnectionChangedCallback(const std::function<void(bool)>& callback)
 {
-	std::lock_guard<std::mutex> lock(callbackMutex_);
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
 	uint32_t id = (++nextCallbackIdentifier_);
 	connectionCallbacks_.insert({ id, callback });
 	return id;
 }
 
 
+uint32_t PentaxTetherLib::Impl::registerExposureModeChangedCallback(const std::function<void(const PentaxTetherLib::ExposureMode&)>& callback)
+{
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	exposureModeCallbacks_.insert({ id, callback });
+	return id;
+}
 
+
+uint32_t PentaxTetherLib::Impl::registerISOChangedCallback(const std::function<void(uint32_t)>& callback)
+{
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	isoCallbacks_.insert({ id, callback });
+	return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerApertureChangedCallback(const std::function<void(const PentaxTetherLib::Rational<uint32_t>&)>& callback)
+{
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	apertureCallbacks_.insert({ id, callback });
+	return id;
+}
+
+
+PentaxTetherLib::Rational<uint32_t> PentaxTetherLib::Impl::fromPSLR(const pslr_rational_t& r)
+{
+	return PentaxTetherLib::Rational<uint32_t>(r.nom, r.denom);
+}
+
+
+pslr_rational_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::Rational<uint32_t>& r)
+{
+	pslr_rational_t p;
+	p.nom = r.nominator;
+	p.denom = r.denominator;
+	return p;
+}
+
+
+PentaxTetherLib::ExposureMode PentaxTetherLib::Impl::fromPSLR(const pslr_gui_exposure_mode_t& e)
+{
+	return static_cast<PentaxTetherLib::ExposureMode>(e);
+}
+
+
+pslr_gui_exposure_mode_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::ExposureMode& e)
+{
+	return static_cast<pslr_gui_exposure_mode_t>(e);
+}
 
