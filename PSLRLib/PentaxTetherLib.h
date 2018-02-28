@@ -155,9 +155,15 @@ public:
 	std::vector<PentaxTetherLib::Rational<uint32_t>> getApertureSteps();
 	uint32_t registerApertureChangedCallback(const std::function<void(const PentaxTetherLib::Rational<uint32_t>&)>& callback);
 
+	PentaxTetherLib::Rational<uint32_t> getShutterTime(bool forceStatusUpdate = false);
+	bool setShutterTime(const PentaxTetherLib::Rational<uint32_t>& shutterTime);
+	std::vector<PentaxTetherLib::Rational<uint32_t>> getShutterTimeSteps();
+	uint32_t registerShutterTimeChangedCallback(const std::function<void(const PentaxTetherLib::Rational<uint32_t>&)>& callback);
 
-	std::vector<PentaxTetherLib::Rational<uint32_t>> getShutterSpeedSteps();
-
+	PentaxTetherLib::Rational<int32_t> getExposureCompensation(bool forceStatusUpdate = false);
+	bool setExposureCompensation(const PentaxTetherLib::Rational<int32_t>& shutterTime);
+	std::vector<PentaxTetherLib::Rational<int32_t>> getExposureCompensationSteps();
+	uint32_t registerExposureCompensationChangedCallback(const std::function<void(const PentaxTetherLib::Rational<int32_t>&)>& callback);
 
 	PentaxTetherLib::ExposureMode getExposureMode();
 	uint32_t registerExposureModeChangedCallback(const std::function<void(const PentaxTetherLib::ExposureMode&)>& callback);
