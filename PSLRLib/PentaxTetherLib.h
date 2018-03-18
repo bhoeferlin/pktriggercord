@@ -125,7 +125,7 @@ public:
 		}
 	};
 
-	static const uint32_t InvalidBufferIndex{ 8 * sizeof(uint16_t) };
+	static constexpr int32_t InvalidBufferIndex{ -1 };
 
 
 	PentaxTetherLib::PentaxTetherLib(const PentaxTetherLib::Options& options);
@@ -168,6 +168,8 @@ public:
 	PentaxTetherLib::ExposureMode getExposureMode();
 	uint32_t registerExposureModeChangedCallback(const std::function<void(const PentaxTetherLib::ExposureMode&)>& callback);
 
+	std::vector<float> getBatteryVoltage(bool forceStatusUpdate = false);
+	uint32_t registerBatteryVoltageChangedCallback(const std::function<void(const std::vector<float>&)>& callback);
 
 	// actions
 	bool executeFocus();

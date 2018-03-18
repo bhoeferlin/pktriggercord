@@ -31,13 +31,18 @@ int main()
 		std::this_thread::sleep_for(std::chrono::seconds(2));
 		std::cout << "ISO: " << tetherLib.getISO() << std::endl;
 
+		tetherLib.setFixedISO(600);
+		std::this_thread::sleep_for(std::chrono::seconds(2));
+		std::cout << "ISO: " << tetherLib.getISO() << std::endl;
+
 		if (tetherLib.executeFocus())
 		{
 			std::cout << "Focus done!" << std::endl;
 			std::this_thread::sleep_for(std::chrono::seconds(2));
 			uint32_t bufferIndex = tetherLib.executeShutter();
-			std::this_thread::sleep_for(std::chrono::seconds(2));
-			tetherLib.getImage(bufferIndex);
+			tetherLib.getPreviewImage(bufferIndex);
+
+//			tetherLib.getImage(bufferIndex);
 		}
 		else
 		{
@@ -80,7 +85,7 @@ public:
 
 
 	bool executeFocus();
-	uint32_t executeShutter();
+	int32_t executeShutter();
 
 	std::vector<uint8_t> getImage(int bufferIndex, ImageFormat format, JpgQuality jpgQuality, ImageResolution resolution, std::function<void(float)> progressCallback);
 	std::vector<uint8_t> getPreviewImage(int bufferIndex);
@@ -110,6 +115,9 @@ public:
 	std::vector<PentaxTetherLib::Rational<int32_t>> getExposureCompensationSteps(bool forceStatusUpdate = false);
 	uint32_t registerExposureCompensationChangedCallback(const std::function<void(const PentaxTetherLib::Rational<int32_t>&)>& callback);
 
+	std::vector<float> getBatteryVoltage(bool forceStatusUpdate);
+	uint32_t registerBatteryVoltageChangedCallback(const std::function<void(const std::vector<float>&)>& callback);
+
 	void unregisterCallback(const uint32_t& callbackIdentifier);
 
 private:
@@ -123,6 +131,7 @@ private:
 	static pslr_rational_t toPSLR(const PentaxTetherLib::Rational<T>& r);
 	static PentaxTetherLib::ExposureMode fromPSLR(const pslr_gui_exposure_mode_t& e);
 	static pslr_gui_exposure_mode_t toPSLR(const PentaxTetherLib::ExposureMode& e);
+	static std::vector<float> batteryStateFromPSLR(const std::shared_ptr<pslr_status>& status);
 
 	PentaxTetherLib::Options options_;
 
@@ -142,6 +151,8 @@ private:
 	std::map< uint32_t, std::function<void(const PentaxTetherLib::Rational<uint32_t>&)> > apertureCallbacks_;
 	std::map< uint32_t, std::function<void(const PentaxTetherLib::Rational<uint32_t>&)> > shutterTimeCallbacks_;
 	std::map< uint32_t, std::function<void(const PentaxTetherLib::Rational<int32_t>&)> > exposureCompensationCallbacks_;
+	std::map< uint32_t, std::function<void(const std::vector<float>&)> > batteryVoltageCallbacks_;
+
 };
 
 
@@ -354,6 +365,17 @@ uint32_t PentaxTetherLib::registerExposureModeChangedCallback(const std::functio
 }
 
 
+std::vector<float> PentaxTetherLib::getBatteryVoltage(bool forceStatusUpdate)
+{
+	return impl_->getBatteryVoltage(forceStatusUpdate);
+}
+
+
+uint32_t PentaxTetherLib::registerBatteryVoltageChangedCallback(const std::function<void(const std::vector<float>&)>& callback)
+{
+	return impl_->registerBatteryVoltageChangedCallback(callback);
+}
+
 
 /////////////////// Implementation Declaration
 
@@ -439,6 +461,22 @@ void PentaxTetherLib::Impl::processStatusCallbacks()
 			for (const auto& callback : exposureCompensationCallbacks_)
 			{
 				callback.second(fromPSLR<int32_t>(currentStatus_->ec));
+			}
+		}
+	}
+
+	//! Battery callback
+	if (batteryVoltageCallbacks_.size() > 0 && currentStatus_ != nullptr)
+	{
+		if (lastStatus_ == nullptr || currentStatus_->battery_1 != lastStatus_->battery_1
+			|| currentStatus_->battery_2 != lastStatus_->battery_2
+			|| currentStatus_->battery_3 != lastStatus_->battery_3
+			|| currentStatus_->battery_4 != lastStatus_->battery_4)
+		{
+			std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+			for (const auto& callback : batteryVoltageCallbacks_)
+			{
+				callback.second(batteryStateFromPSLR(currentStatus_));
 			}
 		}
 	}
@@ -583,6 +621,7 @@ void PentaxTetherLib::Impl::unregisterCallback(const uint32_t& callbackIdentifie
 	apertureCallbacks_.erase(callbackIdentifier);
 	shutterTimeCallbacks_.erase(callbackIdentifier);
 	exposureCompensationCallbacks_.erase(callbackIdentifier);
+	batteryVoltageCallbacks_.erase(callbackIdentifier);
 }
 
 
@@ -627,9 +666,15 @@ bool PentaxTetherLib::Impl::executeFocus()
 
 
 
-uint32_t PentaxTetherLib::Impl::executeShutter()
+int32_t PentaxTetherLib::Impl::executeShutter()
 {
-	uint32_t currentBufferIndex = PentaxTetherLib::InvalidBufferIndex;
+	// TODO - handle bulb mode!
+
+	constexpr static long extraMillisToWait = 500;
+	constexpr static double extraFactorToWait = 0.1;
+	constexpr static long maxMillisShutterTime = 30000;
+
+	int32_t currentBufferIndex = PentaxTetherLib::InvalidBufferIndex;
 	if (!isConnected())
 	{
 		return currentBufferIndex;
@@ -649,7 +694,20 @@ uint32_t PentaxTetherLib::Impl::executeShutter()
 	bool result = pslr_shutter(camhandle_);
 	if (result == PSLR_OK)
 	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		// assure synchronous method
+		PentaxTetherLib::Rational<uint32_t> shutterTime = fromPSLR<uint32_t>(status_preShot->current_shutter_speed);
+		if (shutterTime.isInvalid())
+		{
+			// Max shutter time - 30 sec
+			std::this_thread::sleep_for(std::chrono::milliseconds( static_cast<long>( maxMillisShutterTime * extraFactorToWait + extraMillisToWait )));
+		}
+		else
+		{
+			const auto shuttertimeDuration = std::chrono::milliseconds(static_cast<int64_t>(std::ceil(shutterTime.toDouble() * 1000)));
+			std::cout << "ShutterTime Millis: " << shuttertimeDuration.count() << std::endl;
+			std::this_thread::sleep_for(shuttertimeDuration + std::chrono::milliseconds(extraMillisToWait));
+		}
+
 
 		if (pslr_get_model_only_limited(camhandle_))
 		{
@@ -660,29 +718,28 @@ uint32_t PentaxTetherLib::Impl::executeShutter()
 			auto status_postShot = pollStatus(true);
 			if (nullptr == status_postShot)
 			{
-				return currentBufferIndex;
-			}			
-			
-			// TODO shape of unclear or maybe different between camera models? 
-
-			//assert(status_postShot->bufmask != status_preShot->bufmask);
-
-			uint32_t newBuffers = status_postShot->bufmask; 
-			//uint32_t newBuffers = (status_postShot->bufmask ^ status_preShot->bufmask) & status_postShot->bufmask;
-															//assert(newBuffers > 0);
-
-			int tmpBufferIndex = PentaxTetherLib::InvalidBufferIndex;
-			for (; tmpBufferIndex >= 0; --tmpBufferIndex)
-			{
-				if (newBuffers & (1 << tmpBufferIndex))
-				{
-					break;
-				}
+				currentBufferIndex = PentaxTetherLib::InvalidBufferIndex;
 			}
-
-			if (tmpBufferIndex >= 0)
+			else
 			{
-				currentBufferIndex = tmpBufferIndex;
+				if (status_postShot->bufmask != status_preShot->bufmask)
+				{
+					const uint32_t newBuffers = (status_postShot->bufmask ^ status_preShot->bufmask) & status_postShot->bufmask;
+
+					if (newBuffers > 0)
+					{
+						currentBufferIndex = static_cast<uint32_t>( std::log2(newBuffers) );
+						assert( pow(2, currentBufferIndex) == newBuffers );
+					}
+					else
+					{
+						currentBufferIndex = PentaxTetherLib::InvalidBufferIndex;
+					}
+				}
+				else
+				{
+					currentBufferIndex = PentaxTetherLib::InvalidBufferIndex;
+				}
 			}
 		}
 	}
@@ -711,6 +768,8 @@ std::vector<uint8_t> PentaxTetherLib::Impl::getPreviewImage(int bufferIndex)
 		imageData.resize(imageSize);
 		std::copy(imageBuffer, imageBuffer + imageSize, imageData.begin());
 	}
+
+	pslr_delete_buffer(camhandle_, bufferIndex);
 
 	return imageData;
 }
@@ -771,6 +830,8 @@ std::vector<uint8_t> PentaxTetherLib::Impl::getImage(int bufferIndex, ImageForma
 		pslr_buffer_close(camhandle_);
 
 	}
+
+	pslr_delete_buffer(camhandle_, bufferIndex);
 
 	return std::move(imageData);
 }
@@ -945,6 +1006,20 @@ PentaxTetherLib::ExposureMode PentaxTetherLib::Impl::getExposureMode(bool forceS
 	else
 	{
 		return fromPSLR( static_cast<pslr_gui_exposure_mode_t>( status->exposure_mode ));
+	}
+}
+
+
+std::vector<float> PentaxTetherLib::Impl::getBatteryVoltage(bool forceStatusUpdate)
+{
+	auto status = pollStatus(forceStatusUpdate);
+	if (nullptr == status)
+	{
+		return std::vector<float>();
+	}
+	else
+	{
+		return batteryStateFromPSLR(status);
 	}
 }
 
@@ -1175,6 +1250,14 @@ uint32_t PentaxTetherLib::Impl::registerExposureCompensationChangedCallback(cons
 }
 
 
+uint32_t PentaxTetherLib::Impl::registerBatteryVoltageChangedCallback(const std::function<void(const std::vector<float>&)>& callback)
+{
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	batteryVoltageCallbacks_.insert({ id, callback });
+	return id;
+}
+
 
 template< typename T>
 PentaxTetherLib::Rational<T> PentaxTetherLib::Impl::fromPSLR(const pslr_rational_t& r)
@@ -1204,3 +1287,26 @@ pslr_gui_exposure_mode_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::Ex
 	return static_cast<pslr_gui_exposure_mode_t>(e);
 }
 
+
+std::vector<float> PentaxTetherLib::Impl::batteryStateFromPSLR(const std::shared_ptr<pslr_status>& status)
+{
+	std::vector<float> batteryVoltages;
+	if (status->battery_1 > 0)
+	{
+		batteryVoltages.push_back(0.01f * status->battery_1);
+	}
+	if (status->battery_2 > 0)
+	{
+		batteryVoltages.push_back(0.01f * status->battery_2);
+	}
+	if (status->battery_3 > 0)
+	{
+		batteryVoltages.push_back(0.01f * status->battery_3);
+	}
+	if (status->battery_4 > 0)
+	{
+		batteryVoltages.push_back(0.01f * status->battery_4);
+	}
+
+	return batteryVoltages;
+}
