@@ -49,7 +49,7 @@ public:
 	{
 		EXPOSURE_MODE_INVALID = -2,
 		EXPOSURE_MODE_GREEN = 0,
-		EXPOSURE_MODE_P,
+		EXPOSURE_MODE_P = 1,
 		EXPOSURE_MODE_SV,
 		EXPOSURE_MODE_TV,
 		EXPOSURE_MODE_AV,
@@ -57,6 +57,16 @@ public:
 		EXPOSURE_MODE_M,
 		EXPOSURE_MODE_B,
 		EXPOSURE_MODE_X
+	};
+
+
+	enum AutoFocusMode
+	{
+		AF_MODE_INVALID = -1,
+		AF_MODE_MF = 0,
+		AF_MODE_AF_S,
+		AF_MODE_AF_C,
+		AF_MODE_AF_A
 	};
 
 	struct Options
@@ -140,6 +150,7 @@ public:
 
 
 	std::string getCameraName();
+	std::string getFirmware();
 	std::string getLensType();
 	
 	// properties
@@ -171,9 +182,25 @@ public:
 	std::vector<float> getBatteryVoltage(bool forceStatusUpdate = false);
 	uint32_t registerBatteryVoltageChangedCallback(const std::function<void(const std::vector<float>&)>& callback);
 
+	PentaxTetherLib::Rational<uint32_t> getFocalLength(bool forceStatusUpdate = false);
+	uint32_t registerFocalLengthChangedCallback(const std::function<void(const PentaxTetherLib::Rational<uint32_t>&)>& callback);
+
+	double getExposureValue(bool forceStatusUpdate = false);
+	uint32_t registerExposureValueChangedCallback(const std::function<void(double)>& callback);
+
+	PentaxTetherLib::AutoFocusMode getAutoFocusMode(bool forceStatusUpdate = false);
+	bool setAutoFocusMode(const PentaxTetherLib::AutoFocusMode& af_mode);
+	uint32_t registerAutoFocusModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusMode&)>& callback);
+
+	
+
+	// TODO focus quality
+
+
 	// actions
 	bool executeFocus();
 	uint32_t executeShutter();
+	bool executeDustRemoval();
 
 	std::vector<uint8_t> getImage( int bufferIndex, ImageFormat format = IF_CURRENT_CAM_SETTING, JpgQuality jpgQuality = JPEG_CURRENT_CAM_SETTING, ImageResolution resolution = RES_CURRENT_CAM_SETTING, std::function<void(float)> progressCallback = nullptr );
 
@@ -187,8 +214,6 @@ private:
 
 	class Impl;                     
 	std::unique_ptr<Impl> impl_;    
-
-
 
 
 };

@@ -12,8 +12,8 @@ extern "C"
 #include <time.h>
 #include <iostream>
 #include <assert.h>
-#include <time.h>
 #include <map>
+#include <thread>
 
 
 
@@ -81,11 +81,14 @@ public:
 	uint32_t registerConnectionChangedCallback(const std::function<void(bool)>& callback);
 
 	std::string getCameraName();
+	std::string getFirmware();
 	std::string getLensType();
 
 
 	bool executeFocus();
 	int32_t executeShutter();
+	bool executeDustRemoval();
+
 
 	std::vector<uint8_t> getImage(int bufferIndex, ImageFormat format, JpgQuality jpgQuality, ImageResolution resolution, std::function<void(float)> progressCallback);
 	std::vector<uint8_t> getPreviewImage(int bufferIndex);
@@ -118,6 +121,16 @@ public:
 	std::vector<float> getBatteryVoltage(bool forceStatusUpdate);
 	uint32_t registerBatteryVoltageChangedCallback(const std::function<void(const std::vector<float>&)>& callback);
 
+	PentaxTetherLib::Rational<uint32_t> getFocalLength(bool forceStatusUpdate);
+	uint32_t registerFocalLengthChangedCallback(const std::function<void(const PentaxTetherLib::Rational<uint32_t>&)>& callback);
+
+	double getExposureValue(bool forceStatusUpdate);
+	uint32_t registerExposureValueChangedCallback(const std::function<void(double)>& callback);
+
+	PentaxTetherLib::AutoFocusMode getAutoFocusMode(bool forceStatusUpdate);
+	bool setAutoFocusMode(const PentaxTetherLib::AutoFocusMode& af_mode);
+	uint32_t registerAutoFocusModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusMode&)>& callback);
+
 	void unregisterCallback(const uint32_t& callbackIdentifier);
 
 private:
@@ -131,16 +144,27 @@ private:
 	static pslr_rational_t toPSLR(const PentaxTetherLib::Rational<T>& r);
 	static PentaxTetherLib::ExposureMode fromPSLR(const pslr_gui_exposure_mode_t& e);
 	static pslr_gui_exposure_mode_t toPSLR(const PentaxTetherLib::ExposureMode& e);
+	static PentaxTetherLib::AutoFocusMode fromPSLR(const pslr_af_mode_t& e);
+	static pslr_af_mode_t toPSLR(const PentaxTetherLib::AutoFocusMode& e);
+
+
 	static std::vector<float> batteryStateFromPSLR(const std::shared_ptr<pslr_status>& status);
+	
+	static double calculateExposureValue(const std::shared_ptr<pslr_status>& status);
 
 	PentaxTetherLib::Options options_;
 
 	void* camhandle_{ nullptr };
+	std::mutex camCommunicationMutex_;
+
 
 	std::recursive_mutex statusMutex_;
 	std::shared_ptr<pslr_status> currentStatus_{ nullptr };
 	std::shared_ptr<pslr_status> lastStatus_{ nullptr };
 	time_t statusUpdateTime_{ 0 };
+
+	std::thread polling_thread_;
+
 
 	// callbacks
 	std::recursive_mutex callbackMutex_;
@@ -152,10 +176,12 @@ private:
 	std::map< uint32_t, std::function<void(const PentaxTetherLib::Rational<uint32_t>&)> > shutterTimeCallbacks_;
 	std::map< uint32_t, std::function<void(const PentaxTetherLib::Rational<int32_t>&)> > exposureCompensationCallbacks_;
 	std::map< uint32_t, std::function<void(const std::vector<float>&)> > batteryVoltageCallbacks_;
+	std::map< uint32_t, std::function<void(const PentaxTetherLib::Rational<uint32_t>&)> > focalLengthCallbacks_;
+	std::map< uint32_t, std::function<void(const PentaxTetherLib::AutoFocusMode&)> > autoFocusModeCallbacks_;
+	std::map< uint32_t, std::function<void(double)> > exposureValueCallbacks_;
+
 
 };
-
-
 
 
 
@@ -208,6 +234,12 @@ std::string PentaxTetherLib::getCameraName()
 }
 
 
+std::string PentaxTetherLib::getFirmware()
+{
+	return impl_->getFirmware();
+}
+
+
 std::string PentaxTetherLib::getLensType()
 {
 	return impl_->getLensType();
@@ -217,6 +249,12 @@ std::string PentaxTetherLib::getLensType()
 bool PentaxTetherLib::executeFocus()
 {
 	return impl_->executeFocus();
+}
+
+
+bool PentaxTetherLib::executeDustRemoval()
+{
+	return impl_->executeDustRemoval();
 }
 
 
@@ -377,11 +415,65 @@ uint32_t PentaxTetherLib::registerBatteryVoltageChangedCallback(const std::funct
 }
 
 
+PentaxTetherLib::Rational<uint32_t> PentaxTetherLib::getFocalLength(bool forceStatusUpdate)
+{
+	return impl_->getFocalLength(forceStatusUpdate);
+}
+
+
+uint32_t PentaxTetherLib::registerFocalLengthChangedCallback(const std::function<void(const PentaxTetherLib::Rational<uint32_t>&)>& callback)
+{
+	return impl_->registerFocalLengthChangedCallback(callback);
+}
+
+
+double PentaxTetherLib::getExposureValue(bool forceStatusUpdate)
+{
+	return impl_->getExposureValue(forceStatusUpdate);
+}
+
+
+uint32_t PentaxTetherLib::registerExposureValueChangedCallback(const std::function<void(double)>& callback)
+{
+	return impl_->registerExposureValueChangedCallback(callback);
+}
+
+
+PentaxTetherLib::AutoFocusMode PentaxTetherLib::getAutoFocusMode(bool forceStatusUpdate)
+{
+	return impl_->getAutoFocusMode(forceStatusUpdate);
+}
+
+
+bool PentaxTetherLib::setAutoFocusMode(const PentaxTetherLib::AutoFocusMode& af_mode)
+{
+	return impl_->setAutoFocusMode(af_mode);
+}
+
+
+uint32_t PentaxTetherLib::registerAutoFocusModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusMode&)>& callback)
+{
+	return impl_->registerAutoFocusModeChangedCallback(callback);
+}
+
+
+
+
 /////////////////// Implementation Declaration
 
 
 PentaxTetherLib::Impl::Impl( const PentaxTetherLib::Options& options)
-	: options_( options )
+	: options_( options ), polling_thread_( ([&]()
+											{
+												while (true)
+												{
+													std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(options.statusMaxAge_sec * 1000)));
+													if(isConnected())
+													{ 
+														pollStatus(false);
+													}
+												}
+											}))
 {
 }
 
@@ -389,8 +481,12 @@ PentaxTetherLib::Impl::Impl( const PentaxTetherLib::Options& options)
 
 PentaxTetherLib::Impl::~Impl()
 {
+	polling_thread_.join();
+
 	if (camhandle_ != nullptr)
 	{
+		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
 		pslr_disconnect(camhandle_);
 		pslr_shutdown(camhandle_);
 	}
@@ -480,18 +576,59 @@ void PentaxTetherLib::Impl::processStatusCallbacks()
 			}
 		}
 	}
-}
 
+	//! Focal Length callback
+	if (focalLengthCallbacks_.size() > 0 && currentStatus_ != nullptr)
+	{
+		if (lastStatus_ == nullptr || fromPSLR<uint32_t>(currentStatus_->zoom) != fromPSLR<uint32_t>(lastStatus_->zoom))
+		{
+			std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+			for (const auto& callback : focalLengthCallbacks_)
+			{
+				callback.second(fromPSLR<uint32_t>(currentStatus_->zoom));
+			}
+		}
+	}
+
+	//! Exposure Value callback
+	if (exposureValueCallbacks_.size() > 0 && currentStatus_ != nullptr)
+	{
+		if (lastStatus_ == nullptr || calculateExposureValue( currentStatus_ ) != calculateExposureValue(lastStatus_) )
+		{
+			std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+			for (const auto& callback : exposureValueCallbacks_)
+			{
+				callback.second(calculateExposureValue(currentStatus_));
+			}
+		}
+	}
+
+	//! Auto Focus Mode callback
+	if (autoFocusModeCallbacks_.size() > 0 && currentStatus_ != nullptr)
+	{
+		if (lastStatus_ == nullptr || currentStatus_->af_mode != lastStatus_->af_mode)
+		{
+			std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+			for (const auto& callback : autoFocusModeCallbacks_)
+			{
+				callback.second(fromPSLR(static_cast<pslr_af_mode_t>(currentStatus_->af_mode)));
+			}
+		}
+	}
+
+}
 
 
 std::shared_ptr<pslr_status> PentaxTetherLib::Impl::pollStatus(bool forceStatusUpdate)
 {
 	if (isConnected())
 	{
+		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
 		time_t now;
 		time(&now);
 
-		std::lock_guard<std::recursive_mutex> lock(statusMutex_);
+		std::lock_guard<std::recursive_mutex> statusLock(statusMutex_);
 		if (forceStatusUpdate || difftime(now, statusUpdateTime_) > options_.statusMaxAge_sec)
 		{
 			std::shared_ptr<pslr_status> status = std::make_shared<pslr_status>();
@@ -593,6 +730,8 @@ void PentaxTetherLib::Impl::disconnect()
 {
 	if (camhandle_ != nullptr)
 	{
+		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
 		pslr_disconnect(camhandle_);
 	}
 
@@ -622,6 +761,9 @@ void PentaxTetherLib::Impl::unregisterCallback(const uint32_t& callbackIdentifie
 	shutterTimeCallbacks_.erase(callbackIdentifier);
 	exposureCompensationCallbacks_.erase(callbackIdentifier);
 	batteryVoltageCallbacks_.erase(callbackIdentifier);
+	focalLengthCallbacks_.erase(callbackIdentifier);
+	autoFocusModeCallbacks_.erase(callbackIdentifier);
+	exposureValueCallbacks_.erase(callbackIdentifier);
 }
 
 
@@ -631,11 +773,29 @@ std::string PentaxTetherLib::Impl::getCameraName()
 	std::string camName = "Not connected";
 	if (isConnected())
 	{
+		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
 		camName = std::string(pslr_camera_name(camhandle_));
 	}
 	return camName;
 }
 
+
+std::string PentaxTetherLib::Impl::getFirmware()
+{
+	std::string firmware = "?";
+	if (isConnected())
+	{
+		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+		char firmware_buffer[16];
+		std::fill( &(firmware_buffer[0]), &(firmware_buffer[15]), 0);
+
+		pslr_read_dspinfo(&camhandle_, firmware_buffer);
+		firmware = std::string(firmware_buffer);
+	}
+	return firmware;
+}
 
 
 std::string PentaxTetherLib::Impl::getLensType()
@@ -653,17 +813,28 @@ std::string PentaxTetherLib::Impl::getLensType()
 }
 
 
-
-
 bool PentaxTetherLib::Impl::executeFocus()
 {
-	if (!isConnected())
+	if (isConnected())
 	{
-		return false;
+		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+		return testResult(pslr_focus(camhandle_));
 	}
-	return testResult(pslr_focus(camhandle_));
+	return false;
 }
 
+
+bool PentaxTetherLib::Impl::executeDustRemoval()
+{
+	if (isConnected())
+	{
+		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+		return testResult(pslr_dust_removal(camhandle_));
+	}
+	return false;
+}
 
 
 int32_t PentaxTetherLib::Impl::executeShutter()
@@ -691,7 +862,12 @@ int32_t PentaxTetherLib::Impl::executeShutter()
 		return currentBufferIndex; // Bulb mode not supported
 	}
 
-	bool result = pslr_shutter(camhandle_);
+	bool result;
+	{
+		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+		result = pslr_shutter(camhandle_);
+	}
+
 	if (result == PSLR_OK)
 	{
 		// assure synchronous method
@@ -708,8 +884,13 @@ int32_t PentaxTetherLib::Impl::executeShutter()
 			std::this_thread::sleep_for(shuttertimeDuration + std::chrono::milliseconds(extraMillisToWait));
 		}
 
+		bool isLimitedModel = false;
+		{
+			std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+			isLimitedModel = pslr_get_model_only_limited(camhandle_);
+		}
 
-		if (pslr_get_model_only_limited(camhandle_))
+		if (isLimitedModel)
 		{
 			currentBufferIndex = 0;
 		}
@@ -761,6 +942,7 @@ std::vector<uint8_t> PentaxTetherLib::Impl::getPreviewImage(int bufferIndex)
 	uint8_t *imageBuffer;
 	uint32_t imageSize;
 
+	std::lock_guard<std::mutex> lock(camCommunicationMutex_);
 
 	int result = pslr_get_buffer(camhandle_, bufferIndex, PSLR_BUF_PREVIEW, 4, &imageBuffer, &imageSize);
 	if (testResult(result)) 
@@ -800,11 +982,18 @@ std::vector<uint8_t> PentaxTetherLib::Impl::getImage(int bufferIndex, ImageForma
 		imageType = PSLR_BUF_DNG;
 		break;
 	case IF_JPG:
-		imageType = pslr_get_jpeg_buffer_type(camhandle_, jpgQuality != JPEG_CURRENT_CAM_SETTING ? jpgQuality : status->jpeg_quality);
+		{
+			std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+			imageType = pslr_get_jpeg_buffer_type(camhandle_, jpgQuality != JPEG_CURRENT_CAM_SETTING ? jpgQuality : status->jpeg_quality);
+		}
 		break;
 	default:
 		imageType = static_cast<pslr_buffer_type>(status->image_format);
 	}
+
+
+	std::lock_guard<std::mutex> lock(camCommunicationMutex_);
 
 	bool result = testResult(pslr_buffer_open(camhandle_, bufferIndex, imageType, resolution != RES_CURRENT_CAM_SETTING ? resolution : status->jpeg_resolution));
 	if (result)
@@ -846,6 +1035,8 @@ bool PentaxTetherLib::Impl::setFixedISO(uint32_t isoValue)
 		auto validIsoValues = getISOSteps(false);
 		if (std::find(validIsoValues.begin(), validIsoValues.end(), isoValue) != validIsoValues.end())
 		{
+			std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
 			return testResult( pslr_set_iso(camhandle_, isoValue, 0/*autoisomin*/, 0/*autoisomax*/) );
 		}
 	}
@@ -865,6 +1056,8 @@ bool PentaxTetherLib::Impl::setAutoISORange(uint32_t minISOValue, uint32_t maxIS
 		if ((std::find(validIsoValues.begin(), validIsoValues.end(), minISOValue) != validIsoValues.end()) && 
 			(std::find(validIsoValues.begin(), validIsoValues.end(), maxISOValue) != validIsoValues.end()))
 		{
+			std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
 			return testResult(pslr_set_iso(camhandle_, 0/*fixediso*/, minISOValue, maxISOValue));
 		}
 	}
@@ -911,6 +1104,8 @@ bool PentaxTetherLib::Impl::setAperture(const PentaxTetherLib::Rational<uint32_t
 		auto validApertureValues = getApertureSteps(false);
 		if (std::find(validApertureValues.begin(), validApertureValues.end(), apertureValue) != validApertureValues.end())
 		{
+			std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
 			return testResult(pslr_set_aperture(camhandle_, toPSLR( apertureValue )));
 		}
 	}
@@ -942,6 +1137,8 @@ bool PentaxTetherLib::Impl::setShutterTime(const PentaxTetherLib::Rational<uint3
 		auto validShutterTimes = getShutterTimeSteps(false);
 		if (std::find(validShutterTimes.begin(), validShutterTimes.end(), shutterTime) != validShutterTimes.end())
 		{
+			std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
 			return testResult(pslr_set_shutter(camhandle_, toPSLR(shutterTime)));
 		}
 	}
@@ -973,6 +1170,8 @@ bool PentaxTetherLib::Impl::setExposureCompensation(const PentaxTetherLib::Ratio
 		auto validExposureCompensations = getExposureCompensationSteps(false);
 		if (std::find(validExposureCompensations.begin(), validExposureCompensations.end(), ecValue) != validExposureCompensations.end())
 		{
+			std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
 			return testResult(pslr_set_ec(camhandle_, toPSLR(ecValue)));
 		}
 	}
@@ -1024,6 +1223,74 @@ std::vector<float> PentaxTetherLib::Impl::getBatteryVoltage(bool forceStatusUpda
 }
 
 
+PentaxTetherLib::Rational<uint32_t> PentaxTetherLib::Impl::getFocalLength(bool forceStatusUpdate)
+{
+	auto status = pollStatus(forceStatusUpdate);
+	if (nullptr == status)
+	{
+		return PentaxTetherLib::Rational<uint32_t>();
+	}
+	else
+	{
+		return fromPSLR<uint32_t>(status->zoom);
+	}
+}
+
+
+double PentaxTetherLib::Impl::getExposureValue(bool forceStatusUpdate)
+{
+	auto status = pollStatus(forceStatusUpdate);
+	if (nullptr == status)
+	{
+		return 0.0;
+	}
+	else
+	{
+		return PentaxTetherLib::Impl::calculateExposureValue(status);
+	}
+}
+
+
+
+bool PentaxTetherLib::Impl::setAutoFocusMode(const PentaxTetherLib::AutoFocusMode& af_mode)
+{
+	auto status = pollStatus(true);
+	if (nullptr != status && fromPSLR(static_cast<pslr_af_mode_t>(status->af_mode)) != af_mode)
+	{
+		switch (af_mode)
+		{
+		case AutoFocusMode::AF_MODE_AF_S:
+		case AutoFocusMode::AF_MODE_AF_C:
+		case AutoFocusMode::AF_MODE_AF_A:
+		{
+			std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+			return testResult(pslr_set_af_mode(camhandle_, toPSLR(af_mode)));
+		}
+		default:
+			return false;
+		}
+	}
+
+	return false;
+}
+
+
+PentaxTetherLib::AutoFocusMode PentaxTetherLib::Impl::getAutoFocusMode(bool forceStatusUpdate)
+{
+	auto status = pollStatus(forceStatusUpdate);
+	if (nullptr == status)
+	{
+		return PentaxTetherLib::AF_MODE_INVALID;
+	}
+	else
+	{
+		return fromPSLR(static_cast<pslr_af_mode_t>(status->af_mode));
+	}
+}
+
+
+
 std::vector<uint32_t> PentaxTetherLib::Impl::getISOSteps(bool forceStatusUpdate)
 {
 	auto status = pollStatus(forceStatusUpdate);
@@ -1053,7 +1320,7 @@ std::vector<uint32_t> PentaxTetherLib::Impl::getISOSteps(bool forceStatusUpdate)
 			64000, 80000, 102400 };
 	}
 
-	// Find particular ISO range wrt camera model
+	// Find particular ISO range wrt camera model - no need for thread protection
 	uint32_t minISOOfModel = pslr_get_model_extended_iso_min(camhandle_);
 	uint32_t maxISOOfModel = pslr_get_model_extended_iso_max(camhandle_);
 
@@ -1259,6 +1526,37 @@ uint32_t PentaxTetherLib::Impl::registerBatteryVoltageChangedCallback(const std:
 }
 
 
+uint32_t PentaxTetherLib::Impl::registerFocalLengthChangedCallback(const std::function<void(const PentaxTetherLib::Rational<uint32_t>&)>& callback)
+{
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	focalLengthCallbacks_.insert({ id, callback });
+	return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerAutoFocusModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusMode&)>& callback)
+{
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	autoFocusModeCallbacks_.insert({ id, callback });
+	return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerExposureValueChangedCallback(const std::function<void(double)>& callback)
+{
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	exposureValueCallbacks_.insert({ id, callback });
+	return id;
+}
+
+
+
+
+
+
 template< typename T>
 PentaxTetherLib::Rational<T> PentaxTetherLib::Impl::fromPSLR(const pslr_rational_t& r)
 {
@@ -1288,6 +1586,18 @@ pslr_gui_exposure_mode_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::Ex
 }
 
 
+PentaxTetherLib::AutoFocusMode PentaxTetherLib::Impl::fromPSLR(const pslr_af_mode_t& e)
+{
+	return static_cast<PentaxTetherLib::AutoFocusMode>(e);
+}
+
+
+pslr_af_mode_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::AutoFocusMode& e)
+{
+	return static_cast<pslr_af_mode_t>(e);
+}
+
+
 std::vector<float> PentaxTetherLib::Impl::batteryStateFromPSLR(const std::shared_ptr<pslr_status>& status)
 {
 	std::vector<float> batteryVoltages;
@@ -1309,4 +1619,23 @@ std::vector<float> PentaxTetherLib::Impl::batteryStateFromPSLR(const std::shared
 	}
 
 	return batteryVoltages;
+}
+
+
+double PentaxTetherLib::Impl::calculateExposureValue(const std::shared_ptr<pslr_status>& status)
+{
+	// applied version: EV = log2( f^2 / t)
+	// alternative:     EV = log2( (f^2 / t) * (100 / ISO) )
+	if (status != nullptr)
+	{
+		const double f_sq = pow(fromPSLR<uint32_t>(status->current_aperture).toDouble(), 2.0);
+		const double t = fromPSLR<uint32_t>(status->current_shutter_speed).toDouble();
+
+		if (t > 1e-6)
+		{
+			return std::log2(f_sq/t);
+		}
+	}
+
+	return 0;
 }
