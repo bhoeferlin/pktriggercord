@@ -35,7 +35,7 @@ int main()
 		std::this_thread::sleep_for(std::chrono::seconds(2));
 		std::cout << "ISO: " << tetherLib.getISO() << std::endl;
 
-		if (tetherLib.executeFocus())
+		if (tetherLib.executeFocus().size() > 0)
 		{
 			std::cout << "Focus done!" << std::endl;
 			std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -85,7 +85,7 @@ public:
 	std::string getLensType();
 
 
-	bool executeFocus();
+	std::vector<uint32_t> executeFocus();
 	int32_t executeShutter();
 	bool executeDustRemoval();
 
@@ -131,6 +131,15 @@ public:
 	bool setAutoFocusMode(const PentaxTetherLib::AutoFocusMode& af_mode);
 	uint32_t registerAutoFocusModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusMode&)>& callback);
 
+	uint32_t getNumberOfAutoFocusPoints();
+	PentaxTetherLib::AutoFocusPointSelectionMode getAutoFocusPointSelectionMode(bool forceStatusUpdate);
+	bool setAutoFocusPointSelectionMode(const PentaxTetherLib::AutoFocusPointSelectionMode& af_mode);
+	uint32_t registerAutoFocusPointSelectionModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusPointSelectionMode&)>& callback);
+
+	std::vector<uint32_t> getSelectedAutoFocusPointIndex(bool forceStatusUpdate );
+	bool setSelectedAutoFocusPointIndex(const std::vector<uint32_t>& af_point_idx);
+	uint32_t registerSelectedAutoFocusPointChangedCallback(const std::function<void(const std::vector<uint32_t>&)>& callback);
+
 	void unregisterCallback(const uint32_t& callbackIdentifier);
 
 private:
@@ -146,7 +155,11 @@ private:
 	static pslr_gui_exposure_mode_t toPSLR(const PentaxTetherLib::ExposureMode& e);
 	static PentaxTetherLib::AutoFocusMode fromPSLR(const pslr_af_mode_t& e);
 	static pslr_af_mode_t toPSLR(const PentaxTetherLib::AutoFocusMode& e);
+	static PentaxTetherLib::AutoFocusPointSelectionMode fromPSLR(const pslr_af_point_sel_t& e, const uint32_t& numberOfAFPoints);
+	static pslr_af_point_sel_t toPSLR(const PentaxTetherLib::AutoFocusPointSelectionMode& e, const uint32_t& numberOfAFPoints);
 
+	static std::vector<uint32_t> decodeAutoFocusPoints(const uint32_t& autoFocusFlagList, const uint32_t& numberOfAFPoints);
+	static uint32_t encodeAutoFocusPoints(const std::vector<uint32_t>& af_point_indices, const uint32_t& numberOfAFPoints);
 
 	static std::vector<float> batteryStateFromPSLR(const std::shared_ptr<pslr_status>& status);
 	
@@ -179,10 +192,10 @@ private:
 	std::map< uint32_t, std::function<void(const PentaxTetherLib::Rational<uint32_t>&)> > focalLengthCallbacks_;
 	std::map< uint32_t, std::function<void(const PentaxTetherLib::AutoFocusMode&)> > autoFocusModeCallbacks_;
 	std::map< uint32_t, std::function<void(double)> > exposureValueCallbacks_;
-
+	std::map< uint32_t, std::function<void(const PentaxTetherLib::AutoFocusPointSelectionMode&)> > autoFocusPointSelectionModeCallbacks_;
+	std::map< uint32_t, std::function<void(const std::vector<uint32_t>&)> > selectedAutoFocusPointIndexCallbacks_;
 
 };
-
 
 
 PentaxTetherLib::PentaxTetherLib( const PentaxTetherLib::Options& options )
@@ -246,7 +259,7 @@ std::string PentaxTetherLib::getLensType()
 }
 
 
-bool PentaxTetherLib::executeFocus()
+std::vector<uint32_t> PentaxTetherLib::executeFocus()
 {
 	return impl_->executeFocus();
 }
@@ -457,13 +470,53 @@ uint32_t PentaxTetherLib::registerAutoFocusModeChangedCallback(const std::functi
 }
 
 
+uint32_t PentaxTetherLib::getNumberOfAutoFocusPoints()
+{
+	return impl_->getNumberOfAutoFocusPoints();
+}
+
+
+PentaxTetherLib::AutoFocusPointSelectionMode PentaxTetherLib::getAutoFocusPointSelectionMode(bool forceStatusUpdate)
+{
+	return impl_->getAutoFocusPointSelectionMode(forceStatusUpdate);
+}
+
+
+bool PentaxTetherLib::setAutoFocusPointSelectionMode(const PentaxTetherLib::AutoFocusPointSelectionMode& af_mode)
+{
+	return impl_->setAutoFocusPointSelectionMode(af_mode);
+}
+
+
+uint32_t PentaxTetherLib::registerAutoFocusPointSelectionModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusPointSelectionMode&)>& callback)
+{
+	return impl_->registerAutoFocusPointSelectionModeChangedCallback(callback);
+}
+
+
+std::vector<uint32_t> PentaxTetherLib::getSelectedAutoFocusPointIndex(bool forceStatusUpdate)
+{
+	return impl_->getSelectedAutoFocusPointIndex(forceStatusUpdate);
+}
+
+
+bool PentaxTetherLib::setSelectedAutoFocusPointIndex(const std::vector<uint32_t>& af_point_idx)
+{
+	return impl_->setSelectedAutoFocusPointIndex(af_point_idx);
+}
+
+
+uint32_t PentaxTetherLib::registerSelectedAutoFocusPointChangedCallback(const std::function<void(const std::vector<uint32_t>&)>& callback)
+{
+	return impl_->registerSelectedAutoFocusPointChangedCallback(callback);
+}
 
 
 /////////////////// Implementation Declaration
 
 
 PentaxTetherLib::Impl::Impl( const PentaxTetherLib::Options& options)
-	: options_( options ), polling_thread_( ([&]()
+	: options_( options ), polling_thread_( ([&,options]()
 											{
 												while (true)
 												{
@@ -616,6 +669,33 @@ void PentaxTetherLib::Impl::processStatusCallbacks()
 		}
 	}
 
+	//! Auto Focus Point Selection Mode callback
+	if (autoFocusPointSelectionModeCallbacks_.size() > 0 && currentStatus_ != nullptr)
+	{
+		if (lastStatus_ == nullptr || currentStatus_->af_point_select != lastStatus_->af_point_select)
+		{
+			std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+			for (const auto& callback : autoFocusPointSelectionModeCallbacks_)
+			{
+				callback.second(fromPSLR(static_cast<pslr_af_point_sel_t>(currentStatus_->af_point_select), getNumberOfAutoFocusPoints()));
+			}
+		}
+	}
+	
+	//! Auto Focus Point Selection callback
+	if (selectedAutoFocusPointIndexCallbacks_.size() > 0 && currentStatus_ != nullptr)
+	{
+		if (lastStatus_ == nullptr || currentStatus_->selected_af_point != lastStatus_->selected_af_point)
+		{
+			std::vector<uint32_t> afPoints = decodeAutoFocusPoints(currentStatus_->selected_af_point, getNumberOfAutoFocusPoints());
+			std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+			for (const auto& callback : selectedAutoFocusPointIndexCallbacks_)
+			{
+				callback.second(afPoints);
+			}
+		}
+	}
+
 }
 
 
@@ -687,7 +767,6 @@ bool PentaxTetherLib::Impl::testResult(const int& result)
 }
 
 
-
 bool PentaxTetherLib::Impl::connect(unsigned int timeout_sec)
 {
 	disconnect();
@@ -744,12 +823,10 @@ void PentaxTetherLib::Impl::disconnect()
 }
 
 
-
 bool PentaxTetherLib::Impl::isConnected() const
 {
 	return camhandle_ != nullptr;
 }
-
 
 
 void PentaxTetherLib::Impl::unregisterCallback(const uint32_t& callbackIdentifier)
@@ -762,10 +839,11 @@ void PentaxTetherLib::Impl::unregisterCallback(const uint32_t& callbackIdentifie
 	exposureCompensationCallbacks_.erase(callbackIdentifier);
 	batteryVoltageCallbacks_.erase(callbackIdentifier);
 	focalLengthCallbacks_.erase(callbackIdentifier);
-	autoFocusModeCallbacks_.erase(callbackIdentifier);
 	exposureValueCallbacks_.erase(callbackIdentifier);
+	autoFocusModeCallbacks_.erase(callbackIdentifier);
+	autoFocusPointSelectionModeCallbacks_.erase(callbackIdentifier);
+	selectedAutoFocusPointIndexCallbacks_.erase(callbackIdentifier);
 }
-
 
 
 std::string PentaxTetherLib::Impl::getCameraName()
@@ -813,15 +891,31 @@ std::string PentaxTetherLib::Impl::getLensType()
 }
 
 
-bool PentaxTetherLib::Impl::executeFocus()
+std::vector<uint32_t> PentaxTetherLib::Impl::executeFocus()
 {
 	if (isConnected())
 	{
-		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+        camCommunicationMutex_.lock();
 
-		return testResult(pslr_focus(camhandle_));
+        if (testResult(pslr_focus(camhandle_)))
+		{
+            camCommunicationMutex_.unlock();
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            
+            auto status = pollStatus(true);
+			if (nullptr != status)
+			{
+				return decodeAutoFocusPoints(status->focused_af_point, getNumberOfAutoFocusPoints());
+			}
+		}
+        else
+        {
+            camCommunicationMutex_.unlock();
+        }
+
 	}
-	return false;
+	return std::vector<uint32_t>();
 }
 
 
@@ -1290,6 +1384,76 @@ PentaxTetherLib::AutoFocusMode PentaxTetherLib::Impl::getAutoFocusMode(bool forc
 }
 
 
+uint32_t PentaxTetherLib::Impl::getNumberOfAutoFocusPoints()
+{
+	if (isConnected())
+	{
+		return pslr_get_model_af_point_num(camhandle_);
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+
+PentaxTetherLib::AutoFocusPointSelectionMode PentaxTetherLib::Impl::getAutoFocusPointSelectionMode(bool forceStatusUpdate)
+{
+	auto status = pollStatus(forceStatusUpdate);
+	if (nullptr == status)
+	{
+		return PentaxTetherLib::AF_POINT_SELECTION_INVALID;
+	}
+	else
+	{
+		return fromPSLR(static_cast<pslr_af_point_sel_t>(status->af_point_select), getNumberOfAutoFocusPoints());
+	}
+}
+
+
+
+bool PentaxTetherLib::Impl::setAutoFocusPointSelectionMode(const PentaxTetherLib::AutoFocusPointSelectionMode& af_point_mode)
+{
+	auto status = pollStatus(true);
+	if (nullptr != status && fromPSLR(static_cast<pslr_af_point_sel_t>(status->af_point_select), getNumberOfAutoFocusPoints()) != af_point_mode)
+	{
+		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+		return testResult(pslr_set_af_point_sel(camhandle_, toPSLR(af_point_mode, getNumberOfAutoFocusPoints())));
+	}
+
+	return false;
+}
+
+
+std::vector<uint32_t> PentaxTetherLib::Impl::getSelectedAutoFocusPointIndex(bool forceStatusUpdate)
+{
+	auto status = pollStatus(forceStatusUpdate);
+	if (nullptr == status)
+	{
+		return std::vector<uint32_t>();
+	}
+	else
+	{
+		return decodeAutoFocusPoints( status->selected_af_point, getNumberOfAutoFocusPoints() );
+	}
+}
+
+
+bool PentaxTetherLib::Impl::setSelectedAutoFocusPointIndex(const std::vector<uint32_t>& af_point_idx)
+{
+	uint32_t encodedAFPoints = encodeAutoFocusPoints(af_point_idx, getNumberOfAutoFocusPoints());
+	auto status = pollStatus(true);
+	if (nullptr != status && status->selected_af_point != encodedAFPoints)
+	{
+		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+		return testResult(pslr_select_af_point(camhandle_, encodedAFPoints));
+	}
+
+	return false;
+}
+
 
 std::vector<uint32_t> PentaxTetherLib::Impl::getISOSteps(bool forceStatusUpdate)
 {
@@ -1535,15 +1699,6 @@ uint32_t PentaxTetherLib::Impl::registerFocalLengthChangedCallback(const std::fu
 }
 
 
-uint32_t PentaxTetherLib::Impl::registerAutoFocusModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusMode&)>& callback)
-{
-	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
-	uint32_t id = (++nextCallbackIdentifier_);
-	autoFocusModeCallbacks_.insert({ id, callback });
-	return id;
-}
-
-
 uint32_t PentaxTetherLib::Impl::registerExposureValueChangedCallback(const std::function<void(double)>& callback)
 {
 	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
@@ -1553,8 +1708,31 @@ uint32_t PentaxTetherLib::Impl::registerExposureValueChangedCallback(const std::
 }
 
 
+uint32_t PentaxTetherLib::Impl::registerAutoFocusModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusMode&)>& callback)
+{
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	autoFocusModeCallbacks_.insert({ id, callback });
+	return id;
+}
 
 
+uint32_t PentaxTetherLib::Impl::registerAutoFocusPointSelectionModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusPointSelectionMode&)>& callback)
+{
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	autoFocusPointSelectionModeCallbacks_.insert({ id, callback });
+	return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerSelectedAutoFocusPointChangedCallback(const std::function<void(const std::vector<uint32_t>&)>& callback)
+{
+	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+	uint32_t id = (++nextCallbackIdentifier_);
+	selectedAutoFocusPointIndexCallbacks_.insert({ id, callback });
+	return id;
+}
 
 
 template< typename T>
@@ -1596,6 +1774,169 @@ pslr_af_mode_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::AutoFocusMod
 {
 	return static_cast<pslr_af_mode_t>(e);
 }
+
+
+PentaxTetherLib::AutoFocusPointSelectionMode PentaxTetherLib::Impl::fromPSLR(const pslr_af_point_sel_t& e, const uint32_t& numberOfAFPoints)
+{
+	switch (numberOfAFPoints)
+	{
+	case 11:
+		switch (static_cast<uint32_t>(e))
+		{
+		case 0:
+			return AF_POINT_SELECTION_AUTO_5;
+		case 1:
+			return AF_POINT_SELECTION_SELECT_1;
+		case 2:
+			return AF_POINT_SELECTION_SPOT;
+		case 3:
+			return AF_POINT_SELECTION_AUTO_11;
+		}
+		break;
+	case 27:
+		return static_cast<PentaxTetherLib::AutoFocusPointSelectionMode>(e);
+		break;
+	default:
+		return AF_POINT_SELECTION_INVALID;
+	}
+}
+
+
+pslr_af_point_sel_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::AutoFocusPointSelectionMode& e, const uint32_t& numberOfAFPoints)
+{
+	switch (numberOfAFPoints)
+	{
+	case 11:
+		switch (e)
+		{
+		case AF_POINT_SELECTION_AUTO_5:
+			return static_cast<pslr_af_point_sel_t>(0);
+		case AF_POINT_SELECTION_SELECT_1:
+			return static_cast<pslr_af_point_sel_t>(1);
+		case AF_POINT_SELECTION_SPOT:
+			return static_cast<pslr_af_point_sel_t>(2);
+		case AF_POINT_SELECTION_AUTO_11:
+			return static_cast<pslr_af_point_sel_t>(3);
+		}
+		break;
+	case 27:
+		return static_cast<pslr_af_point_sel_t>(e);
+		break;
+	default:
+		return PSLR_AF_POINT_SEL_SPOT;
+	}
+
+	return static_cast<pslr_af_point_sel_t>(e);
+}
+
+
+std::vector<uint32_t> PentaxTetherLib::Impl::decodeAutoFocusPoints(const uint32_t& autoFocusFlagList, const uint32_t& numberOfAFPoints)
+{
+	// Indices will be ordered, such that top left af point has index 0, and indices are increasing in row-major form
+	std::vector<uint32_t> focusPoints;
+
+	switch (numberOfAFPoints)
+	{
+	case 11: // idx scheme based on PSLR lib layout
+	{
+		for (uint32_t i = 0; i < numberOfAFPoints; ++i)
+		{
+			if ((autoFocusFlagList & (1 << i)) > 0)
+			{
+				focusPoints.push_back(i);
+			}
+		}
+	}
+	break;
+	case 27: // idx scheme based on K3 layout
+	{
+		for (uint32_t i = 0; i < numberOfAFPoints; ++i)
+		{
+			if ((autoFocusFlagList & (1 << i)) > 0)
+			{
+				uint32_t idx = 0;
+				if (i < 27 && i >= 17)
+				{
+					idx = 26 - i;
+				}
+
+				if (i == 0)
+				{
+					idx = 16;
+				}
+
+				if (i == 1)
+				{
+					idx = 10;
+				}
+
+				if (i <= 16 && i >= 2)
+				{
+					idx = 28 - i;
+				}
+
+				focusPoints.push_back(idx);
+			}
+		}
+	}
+	break;
+	default:
+		break;
+	}
+
+	return focusPoints;
+}
+
+
+
+uint32_t PentaxTetherLib::Impl::encodeAutoFocusPoints(const std::vector<uint32_t>& af_point_indices, const uint32_t& numberOfAFPoints)
+{
+	// Indices will be ordered, such that top left af point has index 0, and indices are increasing in row-major form
+	uint32_t focusPointFlag = 0;
+
+	switch (numberOfAFPoints)
+	{
+	case 11: // idx scheme based on PSLR lib layout
+	{
+		for (auto af_point : af_point_indices )
+		{
+			focusPointFlag = focusPointFlag | (1 << af_point);
+		}
+	}
+	break;
+	case 27: // idx scheme based on K3 layout
+	{
+		for (auto af_point : af_point_indices)
+		{
+			if (af_point <= 9)
+			{
+				focusPointFlag = focusPointFlag | (1 << (26 - af_point));
+			}
+
+			if (af_point == 10)
+			{
+				focusPointFlag = focusPointFlag | (1 << 1);
+			}
+
+			if (af_point == 16)
+			{
+				focusPointFlag = focusPointFlag | (1 << 0);
+			}
+
+			if (af_point >= 11 && af_point != 16)
+			{
+				focusPointFlag = focusPointFlag | (1 << (28 - af_point));
+			}
+		}
+	}
+	break;
+	default:
+		break;
+	}
+
+	return focusPointFlag;
+}
+
 
 
 std::vector<float> PentaxTetherLib::Impl::batteryStateFromPSLR(const std::shared_ptr<pslr_status>& status)

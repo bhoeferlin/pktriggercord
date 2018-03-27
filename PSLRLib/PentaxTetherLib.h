@@ -69,6 +69,21 @@ public:
 		AF_MODE_AF_A
 	};
 
+	enum AutoFocusPointSelectionMode
+	{
+		AF_POINT_SELECTION_INVALID = -1,
+		AF_POINT_SELECTION_SPOT = 0,
+		AF_POINT_SELECTION_SELECT_1 = 1,
+		AF_POINT_SELECTION_SELECT_9 = 2,
+		AF_POINT_SELECTION_SELECT_25 = 3,
+		AF_POINT_SELECTION_SELECT_27 = 4,
+		AF_POINT_SELECTION_AUTO_9 = 5, 
+		AF_POINT_SELECTION_AUTO_27 = 6,  
+		AF_POINT_SELECTION_AUTO_5 = 7,
+		AF_POINT_SELECTION_AUTO_11 = 8
+	};
+
+
 	struct Options
 	{
 		// options - to be made configurable
@@ -192,14 +207,33 @@ public:
 	bool setAutoFocusMode(const PentaxTetherLib::AutoFocusMode& af_mode);
 	uint32_t registerAutoFocusModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusMode&)>& callback);
 
-	
+	uint32_t getNumberOfAutoFocusPoints();
+	PentaxTetherLib::AutoFocusPointSelectionMode getAutoFocusPointSelectionMode(bool forceStatusUpdate = false);
+	bool setAutoFocusPointSelectionMode(const PentaxTetherLib::AutoFocusPointSelectionMode& af_mode);
+	uint32_t registerAutoFocusPointSelectionModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoFocusPointSelectionMode&)>& callback);
+
+	std::vector<uint32_t> getSelectedAutoFocusPointIndex(bool forceStatusUpdate = false);
+	bool setSelectedAutoFocusPointIndex(const std::vector<uint32_t>& af_point_idx);
+	uint32_t registerSelectedAutoFocusPointChangedCallback(const std::function<void(const std::vector<uint32_t>&)>& callback);
+
 
 	// TODO focus quality
 
 
-	// actions
-	bool executeFocus();
+	//! Actions
+
+	/**
+	* Runs the auto focus.
+	* @return - vector of (zero-based) index auto focus points that were used to focus
+	*/
+	std::vector<uint32_t> executeFocus();
+
+	/**
+	 * Triggers the camera shutter.
+	 * @return - the index of the camera buffer to which the image was stored
+	 */
 	uint32_t executeShutter();
+
 	bool executeDustRemoval();
 
 	std::vector<uint8_t> getImage( int bufferIndex, ImageFormat format = IF_CURRENT_CAM_SETTING, JpgQuality jpgQuality = JPEG_CURRENT_CAM_SETTING, ImageResolution resolution = RES_CURRENT_CAM_SETTING, std::function<void(float)> progressCallback = nullptr );
