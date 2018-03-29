@@ -1820,7 +1820,24 @@ pslr_af_point_sel_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::AutoFoc
 		}
 		break;
 	case 27:
-		return static_cast<pslr_af_point_sel_t>(e);
+
+        // weird conversion in this direction
+        switch (e)
+        {
+        case AF_POINT_SELECTION_AUTO_9:
+            return static_cast<pslr_af_point_sel_t>(0);
+        case AF_POINT_SELECTION_SELECT_1:
+            return static_cast<pslr_af_point_sel_t>(1);
+        case AF_POINT_SELECTION_SPOT:
+            return static_cast<pslr_af_point_sel_t>(2);
+        case AF_POINT_SELECTION_AUTO_27:
+            return static_cast<pslr_af_point_sel_t>(3);
+        default:
+            return static_cast<pslr_af_point_sel_t>(1);
+        }
+        break;
+
+		//return static_cast<pslr_af_point_sel_t>(e);
 		break;
 	default:
 		return PSLR_AF_POINT_SEL_SPOT;
@@ -1855,7 +1872,7 @@ std::vector<uint32_t> PentaxTetherLib::Impl::decodeAutoFocusPoints(const uint32_
 			if ((autoFocusFlagList & (1 << i)) > 0)
 			{
 				uint32_t idx = 0;
-				if (i < 27 && i >= 17)
+				if (i <= 26 && i >= 17)
 				{
 					idx = 26 - i;
 				}
@@ -1870,10 +1887,15 @@ std::vector<uint32_t> PentaxTetherLib::Impl::decodeAutoFocusPoints(const uint32_
 					idx = 10;
 				}
 
-				if (i <= 16 && i >= 2)
+				if (i <= 16 && i >= 12)
 				{
-					idx = 28 - i;
+					idx = 27 - i;
 				}
+
+                if (i <= 11 && i >= 2)
+                {
+                    idx = 28 - i;
+                }
 
 				focusPoints.push_back(idx);
 			}
@@ -1923,10 +1945,15 @@ uint32_t PentaxTetherLib::Impl::encodeAutoFocusPoints(const std::vector<uint32_t
 				focusPointFlag = focusPointFlag | (1 << 0);
 			}
 
-			if (af_point >= 11 && af_point != 16)
+			if (af_point >= 11 && af_point <= 15)
 			{
-				focusPointFlag = focusPointFlag | (1 << (28 - af_point));
+				focusPointFlag = focusPointFlag | (1 << (27 - af_point));
 			}
+
+            if (af_point >= 17)
+            {
+                focusPointFlag = focusPointFlag | (1 << (28 - af_point));
+            }
 		}
 	}
 	break;
