@@ -140,6 +140,31 @@ public:
 	bool setSelectedAutoFocusPointIndex(const std::vector<uint32_t>& af_point_idx);
 	uint32_t registerSelectedAutoFocusPointChangedCallback(const std::function<void(const std::vector<uint32_t>&)>& callback);
 
+    PentaxTetherLib::ColorDynamicsMode getColorDynamicsMode(bool forceStatusUpdate);
+    bool setColorDynamicsMode(const PentaxTetherLib::ColorDynamicsMode& ColorDynamicsMode);
+    uint32_t registerColorDynamicsModeChangedCallback(const std::function<void(const PentaxTetherLib::ColorDynamicsMode&)>& callback);
+
+    int32_t getToneSaturation(bool forceStatusUpdate);
+    bool setToneSaturation(const int32_t& saturation);
+    std::pair<int32_t, int32_t> getToneSaturationLimits();
+    uint32_t registerToneSaturationChangedCallback(const std::function<void(const int32_t&)>& callback);
+
+    int32_t getToneHue(bool forceStatusUpdate);
+    bool setToneHue(const int32_t& hue);
+    std::pair<int32_t, int32_t> getToneHueLimits();
+    uint32_t registerToneHueChangedCallback(const std::function<void(const int32_t&)>& callback);
+
+    int32_t getToneContrast(bool forceStatusUpdate);
+    bool setToneContrast(const int32_t& contrast);
+    std::pair<int32_t, int32_t> getToneContrastLimits();
+    uint32_t registerToneContrastChangedCallback(const std::function<void(const int32_t&)>& callback);
+
+    int32_t getToneSharpness(bool forceStatusUpdate);
+    bool setToneSharpness(const int32_t& sharpness);
+    std::pair<int32_t, int32_t> getToneSharpnessLimits();
+    uint32_t registerToneSharpnessChangedCallback(const std::function<void(const int32_t&)>& callback);
+
+
 	void unregisterCallback(const uint32_t& callbackIdentifier);
 
 private:
@@ -157,6 +182,8 @@ private:
 	static pslr_af_mode_t toPSLR(const PentaxTetherLib::AutoFocusMode& e);
 	static PentaxTetherLib::AutoFocusPointSelectionMode fromPSLR(const pslr_af_point_sel_t& e, const uint32_t& numberOfAFPoints);
 	static pslr_af_point_sel_t toPSLR(const PentaxTetherLib::AutoFocusPointSelectionMode& e, const uint32_t& numberOfAFPoints);
+    static PentaxTetherLib::ColorDynamicsMode fromPSLR(const pslr_jpeg_image_tone_t& e);
+    static pslr_jpeg_image_tone_t toPSLR(const PentaxTetherLib::ColorDynamicsMode& e);
 
 	static std::vector<uint32_t> decodeAutoFocusPoints(const uint32_t& autoFocusFlagList, const uint32_t& numberOfAFPoints);
 	static uint32_t encodeAutoFocusPoints(const std::vector<uint32_t>& af_point_indices, const uint32_t& numberOfAFPoints);
@@ -164,6 +191,9 @@ private:
 	static std::vector<float> batteryStateFromPSLR(const std::shared_ptr<pslr_status>& status);
 	
 	static double calculateExposureValue(const std::shared_ptr<pslr_status>& status);
+    
+    int32_t getJPEGPropertyOffset() const;
+
 
 	PentaxTetherLib::Options options_;
 
@@ -194,7 +224,11 @@ private:
 	std::map< uint32_t, std::function<void(double)> > exposureValueCallbacks_;
 	std::map< uint32_t, std::function<void(const PentaxTetherLib::AutoFocusPointSelectionMode&)> > autoFocusPointSelectionModeCallbacks_;
 	std::map< uint32_t, std::function<void(const std::vector<uint32_t>&)> > selectedAutoFocusPointIndexCallbacks_;
-
+    std::map< uint32_t, std::function<void(const PentaxTetherLib::ColorDynamicsMode&)> > ColorDynamicsModeModeCallbacks_;
+    std::map< uint32_t, std::function<void(const int32_t&)> > jpegSaturationCallbacks_;
+    std::map< uint32_t, std::function<void(const int32_t&)> > jpegHueCallbacks_;
+    std::map< uint32_t, std::function<void(const int32_t&)> > jpegContrastCallbacks_;
+    std::map< uint32_t, std::function<void(const int32_t&)> > jpegSharpnessCallbacks_;
 };
 
 
@@ -512,6 +546,116 @@ uint32_t PentaxTetherLib::registerSelectedAutoFocusPointChangedCallback(const st
 }
 
 
+
+PentaxTetherLib::ColorDynamicsMode PentaxTetherLib::getColorDynamicsMode(bool forceStatusUpdate)
+{
+    return impl_->getColorDynamicsMode(forceStatusUpdate);
+}
+
+
+bool PentaxTetherLib::setColorDynamicsMode(const PentaxTetherLib::ColorDynamicsMode& ColorDynamicsMode)
+{
+    return impl_->setColorDynamicsMode(ColorDynamicsMode);
+}
+
+
+uint32_t PentaxTetherLib::registerColorDynamicsModeChangedCallback(const std::function<void(const PentaxTetherLib::ColorDynamicsMode&)>& callback)
+{
+    return impl_->registerColorDynamicsModeChangedCallback(callback);
+}
+
+
+int32_t PentaxTetherLib::getToneSaturation(bool forceStatusUpdate)
+{
+    return impl_->getToneSaturation(forceStatusUpdate);
+}
+
+
+bool PentaxTetherLib::setToneSaturation(const int32_t& saturation)
+{
+    return impl_->setToneSaturation(saturation);
+}
+
+
+std::pair<int32_t, int32_t> PentaxTetherLib::getToneSaturationLimits()
+{
+    return impl_->getToneSaturationLimits();
+}
+
+
+uint32_t PentaxTetherLib::registerToneSaturationChangedCallback(const std::function<void(const int32_t&)>& callback)
+{
+    return impl_->registerToneSaturationChangedCallback(callback);
+}
+
+
+int32_t PentaxTetherLib::getToneHue(bool forceStatusUpdate)
+{
+    return impl_->getToneHue(forceStatusUpdate);
+}
+
+
+bool PentaxTetherLib::setToneHue(const int32_t& hue)
+{
+    return impl_->setToneHue(hue);
+}
+
+
+std::pair<int32_t, int32_t> PentaxTetherLib::getToneHueLimits()
+{
+    return impl_->getToneHueLimits();
+}
+
+
+uint32_t PentaxTetherLib::registerToneHueChangedCallback(const std::function<void(const int32_t&)>& callback)
+{
+    return impl_->registerToneHueChangedCallback(callback);
+}
+
+
+int32_t PentaxTetherLib::getToneContrast(bool forceStatusUpdate)
+{
+    return impl_->getToneContrast(forceStatusUpdate);
+}
+
+bool PentaxTetherLib::setToneContrast(const int32_t& contrast)
+{
+    return impl_->setToneContrast(contrast);
+}
+
+std::pair<int32_t, int32_t> PentaxTetherLib::getToneContrastLimits()
+{
+    return impl_->getToneContrastLimits();
+}
+
+uint32_t PentaxTetherLib::registerToneContrastChangedCallback(const std::function<void(const int32_t&)>& callback)
+{
+    return impl_->registerToneContrastChangedCallback(callback);
+}
+
+
+int32_t PentaxTetherLib::getToneSharpness(bool forceStatusUpdate)
+{
+    return impl_->getToneSharpness(forceStatusUpdate);
+}
+
+bool PentaxTetherLib::setToneSharpness(const int32_t& sharpness)
+{
+    return impl_->setToneSharpness(sharpness);
+}
+
+std::pair<int32_t, int32_t> PentaxTetherLib::getToneSharpnessLimits()
+{
+    return impl_->getToneSharpnessLimits();
+}
+
+uint32_t PentaxTetherLib::registerToneSharpnessChangedCallback(const std::function<void(const int32_t&)>& callback)
+{
+    return impl_->registerToneSharpnessChangedCallback(callback);
+}
+
+
+
 /////////////////// Implementation Declaration
 
 
@@ -696,6 +840,70 @@ void PentaxTetherLib::Impl::processStatusCallbacks()
 		}
 	}
 
+    //! Color Dynamics (Tone) callback
+    if (ColorDynamicsModeModeCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->jpeg_image_tone != lastStatus_->jpeg_image_tone)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : ColorDynamicsModeModeCallbacks_)
+            {
+                callback.second( fromPSLR( static_cast<pslr_jpeg_image_tone_t>(currentStatus_->jpeg_image_tone)));
+            }
+        }
+    }
+
+    //! JPEG Saturation callback
+    if (jpegSaturationCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->jpeg_saturation != lastStatus_->jpeg_saturation)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : jpegSaturationCallbacks_)
+            {
+                callback.second( currentStatus_->jpeg_saturation - getJPEGPropertyOffset() );
+            }
+        }
+    }
+
+    //! JPEG Hue callback
+    if (jpegHueCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->jpeg_hue != lastStatus_->jpeg_hue)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : jpegHueCallbacks_)
+            {
+                callback.second(currentStatus_->jpeg_hue - getJPEGPropertyOffset());
+            }
+        }
+    }
+
+    //! JPEG Sharpness callback
+    if (jpegSharpnessCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->jpeg_sharpness != lastStatus_->jpeg_sharpness)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : jpegSharpnessCallbacks_)
+            {
+                callback.second(currentStatus_->jpeg_sharpness - getJPEGPropertyOffset());
+            }
+        }
+    }
+
+    //! JPEG Contrast callback
+    if (jpegContrastCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->jpeg_contrast != lastStatus_->jpeg_contrast)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : jpegContrastCallbacks_)
+            {
+                callback.second(currentStatus_->jpeg_contrast - getJPEGPropertyOffset());
+            }
+        }
+    }
 }
 
 
@@ -843,6 +1051,11 @@ void PentaxTetherLib::Impl::unregisterCallback(const uint32_t& callbackIdentifie
 	autoFocusModeCallbacks_.erase(callbackIdentifier);
 	autoFocusPointSelectionModeCallbacks_.erase(callbackIdentifier);
 	selectedAutoFocusPointIndexCallbacks_.erase(callbackIdentifier);
+    ColorDynamicsModeModeCallbacks_.erase(callbackIdentifier);
+    jpegContrastCallbacks_.erase(callbackIdentifier);
+    jpegSaturationCallbacks_.erase(callbackIdentifier);
+    jpegSharpnessCallbacks_.erase(callbackIdentifier);
+    jpegHueCallbacks_.erase(callbackIdentifier);
 }
 
 
@@ -1455,6 +1668,194 @@ bool PentaxTetherLib::Impl::setSelectedAutoFocusPointIndex(const std::vector<uin
 }
 
 
+
+
+PentaxTetherLib::ColorDynamicsMode PentaxTetherLib::Impl::getColorDynamicsMode(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return PentaxTetherLib::COLOR_DYNAMICS_INVALID;
+    }
+    else
+    {
+        return fromPSLR( static_cast<pslr_jpeg_image_tone_t>(status->jpeg_image_tone));
+    }
+}
+
+
+bool PentaxTetherLib::Impl::setColorDynamicsMode(const PentaxTetherLib::ColorDynamicsMode& ColorDynamicsMode)
+{
+    auto status = pollStatus(true);
+    if (nullptr != status && fromPSLR(static_cast<pslr_jpeg_image_tone_t>(status->jpeg_image_tone)) != ColorDynamicsMode)
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        return testResult(pslr_set_jpeg_image_tone(camhandle_, toPSLR(ColorDynamicsMode)));
+    }
+
+    return false;
+}
+
+
+
+int32_t PentaxTetherLib::Impl::getToneSaturation(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return 0;
+    }
+    else
+    {
+        return status->jpeg_saturation - getJPEGPropertyOffset();
+    }
+}
+
+
+bool PentaxTetherLib::Impl::setToneSaturation(const int32_t& saturation)
+{
+    int32_t limit = getJPEGPropertyOffset();
+    uint32_t rangedSaturation = saturation + limit;
+
+    auto status = pollStatus(true);
+    if (nullptr != status && status->jpeg_saturation != rangedSaturation &&
+        saturation >= limit && saturation <= limit)
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        return testResult(pslr_set_jpeg_saturation(camhandle_, saturation));
+    }
+
+    return false;
+}
+
+int32_t PentaxTetherLib::Impl::getToneHue(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return 0;
+    }
+    else
+    {
+        return status->jpeg_hue - getJPEGPropertyOffset();
+    }
+}
+
+
+bool PentaxTetherLib::Impl::setToneHue(const int32_t& hue)
+{
+    int32_t limit = getJPEGPropertyOffset();
+    uint32_t rangedHue = hue + limit;
+
+    auto status = pollStatus(true);
+    if (nullptr != status && status->jpeg_hue != rangedHue &&
+        hue >= limit && hue <= limit)
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        return testResult(pslr_set_jpeg_hue(camhandle_, hue));
+    }
+
+    return false;
+}
+
+
+int32_t PentaxTetherLib::Impl::getToneContrast(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return 0;
+    }
+    else
+    {
+        return status->jpeg_contrast - getJPEGPropertyOffset();
+    }
+}
+
+
+bool PentaxTetherLib::Impl::setToneContrast(const int32_t& contrast)
+{
+    int32_t limit = getJPEGPropertyOffset();
+    uint32_t rangedContrast = contrast + limit;
+
+    auto status = pollStatus(true);
+    if (nullptr != status && status->jpeg_contrast != rangedContrast &&
+        contrast >= limit && contrast <= limit)
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        return testResult(pslr_set_jpeg_contrast(camhandle_, contrast));
+    }
+
+    return false;
+}
+
+
+int32_t PentaxTetherLib::Impl::getToneSharpness(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return 0;
+    }
+    else
+    {
+        return status->jpeg_sharpness - getJPEGPropertyOffset();
+    }
+}
+
+
+bool PentaxTetherLib::Impl::setToneSharpness(const int32_t& sharpness)
+{
+    int32_t limit = getJPEGPropertyOffset();
+    uint32_t rangedSharpness = sharpness + limit;
+
+    auto status = pollStatus(true);
+    if (nullptr != status && status->jpeg_sharpness != rangedSharpness && 
+        sharpness >= limit && sharpness <= limit)
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        return testResult(pslr_set_jpeg_sharpness(camhandle_, sharpness));
+    }
+
+    return false;
+}
+
+
+
+
+std::pair<int32_t, int32_t> PentaxTetherLib::Impl::getToneSaturationLimits()
+{
+    int32_t limit = getJPEGPropertyOffset();
+    return std::pair<int32_t, int32_t>(-limit, limit);
+}
+
+
+std::pair<int32_t, int32_t> PentaxTetherLib::Impl::getToneHueLimits()
+{
+    int32_t limit = getJPEGPropertyOffset();
+    return std::pair<int32_t, int32_t>(-limit, limit);
+}
+
+
+std::pair<int32_t, int32_t> PentaxTetherLib::Impl::getToneContrastLimits()
+{
+    int32_t limit = getJPEGPropertyOffset();
+    return std::pair<int32_t, int32_t>(-limit, limit);
+}
+
+
+std::pair<int32_t, int32_t> PentaxTetherLib::Impl::getToneSharpnessLimits()
+{
+    int32_t limit = getJPEGPropertyOffset();
+    return std::pair<int32_t, int32_t>(-limit, limit);
+}
+
+
 std::vector<uint32_t> PentaxTetherLib::Impl::getISOSteps(bool forceStatusUpdate)
 {
 	auto status = pollStatus(forceStatusUpdate);
@@ -1735,6 +2136,54 @@ uint32_t PentaxTetherLib::Impl::registerSelectedAutoFocusPointChangedCallback(co
 }
 
 
+uint32_t PentaxTetherLib::Impl::registerToneSaturationChangedCallback(const std::function<void(const int32_t&)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    jpegSaturationCallbacks_.insert({ id, callback });
+    return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerToneHueChangedCallback(const std::function<void(const int32_t&)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    jpegHueCallbacks_.insert({ id, callback });
+    return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerToneContrastChangedCallback(const std::function<void(const int32_t&)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    jpegContrastCallbacks_.insert({ id, callback });
+    return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerToneSharpnessChangedCallback(const std::function<void(const int32_t&)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    jpegSharpnessCallbacks_.insert({ id, callback });
+    return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerColorDynamicsModeChangedCallback(const std::function<void(const PentaxTetherLib::ColorDynamicsMode&)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    ColorDynamicsModeModeCallbacks_.insert({ id, callback });
+    return id;
+}
+
+
+
+
+
 template< typename T>
 PentaxTetherLib::Rational<T> PentaxTetherLib::Impl::fromPSLR(const pslr_rational_t& r)
 {
@@ -1799,6 +2248,7 @@ PentaxTetherLib::AutoFocusPointSelectionMode PentaxTetherLib::Impl::fromPSLR(con
 	default:
 		return AF_POINT_SELECTION_INVALID;
 	}
+    return AF_POINT_SELECTION_INVALID;
 }
 
 
@@ -1844,6 +2294,18 @@ pslr_af_point_sel_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::AutoFoc
 	}
 
 	return static_cast<pslr_af_point_sel_t>(e);
+}
+
+
+PentaxTetherLib::ColorDynamicsMode PentaxTetherLib::Impl::fromPSLR(const pslr_jpeg_image_tone_t& e)
+{
+    return static_cast<PentaxTetherLib::ColorDynamicsMode>(e);
+}
+
+
+pslr_jpeg_image_tone_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::ColorDynamicsMode& e)
+{
+    return static_cast<pslr_jpeg_image_tone_t>(e);
 }
 
 
@@ -2006,4 +2468,16 @@ double PentaxTetherLib::Impl::calculateExposureValue(const std::shared_ptr<pslr_
 	}
 
 	return 0;
+}
+
+
+int32_t PentaxTetherLib::Impl::getJPEGPropertyOffset() const
+{
+    int32_t offset = 0;
+    if (isConnected())
+    {
+        offset = (pslr_get_model_jpeg_property_levels(camhandle_) - 1) / 2;
+    }
+
+    return offset;
 }

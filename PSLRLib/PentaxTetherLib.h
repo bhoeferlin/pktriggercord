@@ -84,6 +84,24 @@ public:
 	};
 
 
+    enum ColorDynamicsMode {
+        COLOR_DYNAMICS_INVALID = -1,
+        COLOR_DYNAMICS_NATURAL,
+        COLOR_DYNAMICS_BRIGHT,
+        COLOR_DYNAMICS_PORTRAIT,
+        COLOR_DYNAMICS_LANDSCAPE,
+        COLOR_DYNAMICS_VIBRANT,
+        COLOR_DYNAMICS_MONOCHROME,
+        COLOR_DYNAMICS_MUTED,
+        COLOR_DYNAMICS_REVERSAL_FILM,
+        COLOR_DYNAMICS_BLEACH_BYPASS,
+        COLOR_DYNAMICS_RADIANT,
+        COLOR_DYNAMICS_CROSS_PROCESSING,
+        COLOR_DYNAMICS_FLAT,
+        COLOR_DYNAMICS_AUTO
+    };
+
+
 	struct Options
 	{
 		// options - to be made configurable
@@ -217,7 +235,46 @@ public:
 	uint32_t registerSelectedAutoFocusPointChangedCallback(const std::function<void(const std::vector<uint32_t>&)>& callback);
 
 
-	// TODO focus quality
+    PentaxTetherLib::ColorDynamicsMode getColorDynamicsMode(bool forceStatusUpdate = false);
+    bool setColorDynamicsMode(const PentaxTetherLib::ColorDynamicsMode& ColorDynamicsMode);
+    uint32_t registerColorDynamicsModeChangedCallback(const std::function<void(const PentaxTetherLib::ColorDynamicsMode&)>& callback);
+
+    int32_t getToneSaturation(bool forceStatusUpdate = false);
+    bool setToneSaturation(const int32_t& saturation);
+    std::pair<int32_t, int32_t> getToneSaturationLimits();
+    uint32_t registerToneSaturationChangedCallback(const std::function<void(const int32_t&)>& callback);
+
+    int32_t getToneHue(bool forceStatusUpdate = false);
+    bool setToneHue(const int32_t& hue);
+    std::pair<int32_t, int32_t> getToneHueLimits();
+    uint32_t registerToneHueChangedCallback(const std::function<void(const int32_t&)>& callback);
+
+    int32_t getToneContrast(bool forceStatusUpdate = false);
+    bool setToneContrast(const int32_t& contrast);
+    std::pair<int32_t, int32_t> getToneContrastLimits();
+    uint32_t registerToneContrastChangedCallback(const std::function<void(const int32_t&)>& callback);
+
+    int32_t getToneSharpness(bool forceStatusUpdate = false);
+    bool setToneSharpness(const int32_t& sharpness);
+    std::pair<int32_t, int32_t> getToneSharpnessLimits();
+    uint32_t registerToneSharpnessChangedCallback(const std::function<void(const int32_t&)>& callback);
+
+
+/*
+
+    uint32_t jpeg_quality;
+    uint32_t jpeg_resolution;
+
+
+
+    int pslr_set_jpeg_stars(pslr_handle_t h, int jpeg_stars);
+    int pslr_set_jpeg_resolution(pslr_handle_t h, int megapixel);
+    int pslr_set_jpeg_image_tone(pslr_handle_t h, pslr_jpeg_image_tone_t image_mode);
+
+    int pslr_set_jpeg_sharpness(pslr_handle_t h, int32_t sharpness);
+    int pslr_set_jpeg_contrast(pslr_handle_t h, int32_t contrast);
+    int pslr_set_jpeg_saturation(pslr_handle_t h, int32_t saturation);
+    int pslr_set_jpeg_hue(pslr_handle_t h, int32_t hue);*/
 
 
 	//! Actions
@@ -234,7 +291,12 @@ public:
 	 */
 	uint32_t executeShutter();
 
+    /**
+     * Executes the dust removal program
+     */
 	bool executeDustRemoval();
+
+
 
 	std::vector<uint8_t> getImage( int bufferIndex, ImageFormat format = IF_CURRENT_CAM_SETTING, JpgQuality jpgQuality = JPEG_CURRENT_CAM_SETTING, ImageResolution resolution = RES_CURRENT_CAM_SETTING, std::function<void(float)> progressCallback = nullptr );
 
