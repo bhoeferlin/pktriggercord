@@ -59,6 +59,14 @@ public:
 		EXPOSURE_MODE_X
 	};
 
+    enum AutoExposureMode
+    {
+        AUTOEXPOSURE_METERING_INVALID = -1,
+        AUTOEXPOSURE_METERING_MULTI = 0,
+        AUTOEXPOSURE_METERING_CENTER,
+        AUTOEXPOSURE_METERING_SPOT
+    };
+
 
 	enum AutoFocusMode
 	{
@@ -84,7 +92,8 @@ public:
 	};
 
 
-    enum ColorDynamicsMode {
+    enum ColorDynamicsMode 
+    {
         COLOR_DYNAMICS_INVALID = -1,
         COLOR_DYNAMICS_NATURAL,
         COLOR_DYNAMICS_BRIGHT,
@@ -99,6 +108,46 @@ public:
         COLOR_DYNAMICS_CROSS_PROCESSING,
         COLOR_DYNAMICS_FLAT,
         COLOR_DYNAMICS_AUTO
+    };
+
+    enum WhiteBalanceMode
+    {
+        WHITE_BALANCE_MODE_INVALID = -1,
+        WHITE_BALANCE_MODE_AUTO = 0,
+        WHITE_BALANCE_MODE_DAYLIGHT,
+        WHITE_BALANCE_MODE_SHADE,
+        WHITE_BALANCE_MODE_CLOUDY,
+        WHITE_BALANCE_MODE_FLUORESCENT_DAYLIGHT_COLOR,
+        WHITE_BALANCE_MODE_FLUORESCENT_DAYLIGHT_WHITE,
+        WHITE_BALANCE_MODE_FLUORESCENT_COOL_WHITE,
+        WHITE_BALANCE_MODE_TUNGSTEN,
+        WHITE_BALANCE_MODE_FLASH,
+        WHITE_BALANCE_MODE_MANUAL,
+        WHITE_BALANCE_MODE_MANUAL_2,
+        WHITE_BALANCE_MODE_MANUAL_3,
+        WHITE_BALANCE_MODE_KELVIN_1,
+        WHITE_BALANCE_MODE_KELVIN_2,
+        WHITE_BALANCE_MODE_KELVIN_3,
+        WHITE_BALANCE_MODE_FLUORESCENT_WARM_WHITE,
+        WHITE_BALANCE_MODE_CTE,
+        WHITE_BALANCE_MODE_MULTI_AUTO
+    };
+
+
+    enum FlashMode
+    {
+        FLASH_MODE_INVALID = -1,
+        FLASH_MODE_ON = 0,
+        FLASH_MODE_ON_REDEYE = 1,
+        FLASH_MODE_SLOW = 2,
+        FLASH_MODE_SLOW_REDEYE = 3,
+        FLASH_MODE_FIRST_TRAILING_CURTAIN = 4,
+        FLASH_MODE_AUTO = 5,
+        FLASH_MODE_AUTO_REDEYE = 6,
+        FLASH_MODE_SECOND_TRAILING_CURTAIN = 7,
+        FLASH_MODE_WIRELESS_MASTER = 8,
+        FLASH_MODE_WIRELESS_CONTROL = 9,
+        FLASH_MODE_MANUAL = 10
     };
 
 
@@ -259,22 +308,33 @@ public:
     std::pair<int32_t, int32_t> getToneSharpnessLimits();
     uint32_t registerToneSharpnessChangedCallback(const std::function<void(const int32_t&)>& callback);
 
+    PentaxTetherLib::AutoExposureMode getAutoExposureMeteringMode(bool forceStatusUpdate = false);
+    bool setAutoExposureMeteringMode(const PentaxTetherLib::AutoExposureMode& ae_mode);
+    uint32_t registerAutoExposureMeteringModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoExposureMode&)>& callback);
 
-/*
+    PentaxTetherLib::WhiteBalanceMode getWhiteBalanceMode(bool forceStatusUpdate = false);
+    bool setWhiteBalanceMode(const PentaxTetherLib::WhiteBalanceMode& wb_mode);
+    uint32_t registerWhiteBalanceModeChangedCallback(const std::function<void(const PentaxTetherLib::WhiteBalanceMode&)>& callback);
 
-    uint32_t jpeg_quality;
-    uint32_t jpeg_resolution;
+    /**
+     * Returns pair of adjustment values [-getWhiteBalanceAdjustmentSteps, +getWhiteBalanceAdjustmentSteps].
+     * The first part of the pair contains the magenta/green axis, the second the blue/amber axis.
+     * Negative values, thus indicate magenta or blue deviation, positive values green or amber deviation.
+     */
+    std::pair<int32_t, int32_t> getWhiteBalanceAdjustment(bool forceStatusUpdate = false);
+    std::pair<int32_t, int32_t> getWhiteBalanceAdjustmentRange();
+    bool setWhiteBalanceAdjustment(const int32_t& magenta_green, const int32_t& blue_amber);
+    uint32_t registerWhiteBalanceAdjustmentChangedCallback(const std::function<void(const int32_t&, const int32_t&)>& callback);
 
+    PentaxTetherLib::FlashMode getFlashMode(bool forceStatusUpdate = false);
+    bool setFlashMode(const PentaxTetherLib::FlashMode& flash_mode);
+    uint32_t registerFlashModeChangedCallback(const std::function<void(const PentaxTetherLib::FlashMode&)>& callback);
 
-
-    int pslr_set_jpeg_stars(pslr_handle_t h, int jpeg_stars);
-    int pslr_set_jpeg_resolution(pslr_handle_t h, int megapixel);
-    int pslr_set_jpeg_image_tone(pslr_handle_t h, pslr_jpeg_image_tone_t image_mode);
-
-    int pslr_set_jpeg_sharpness(pslr_handle_t h, int32_t sharpness);
-    int pslr_set_jpeg_contrast(pslr_handle_t h, int32_t contrast);
-    int pslr_set_jpeg_saturation(pslr_handle_t h, int32_t saturation);
-    int pslr_set_jpeg_hue(pslr_handle_t h, int32_t hue);*/
+    PentaxTetherLib::Rational<int32_t> getFlashExposureCompensation(bool forceStatusUpdate = false);
+    bool setFlashExposureCompensation(const PentaxTetherLib::Rational<int32_t>& shutterTime);
+    std::vector<PentaxTetherLib::Rational<int32_t>> getFlashExposureCompensationSteps();
+    uint32_t registerFlashExposureCompensationChangedCallback(const std::function<void(const PentaxTetherLib::Rational<int32_t>&)>& callback);
+    
 
 
 	//! Actions

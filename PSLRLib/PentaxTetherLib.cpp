@@ -164,6 +164,27 @@ public:
     std::pair<int32_t, int32_t> getToneSharpnessLimits();
     uint32_t registerToneSharpnessChangedCallback(const std::function<void(const int32_t&)>& callback);
 
+    PentaxTetherLib::AutoExposureMode getAutoExposureMeteringMode(bool forceStatusUpdate);
+    bool setAutoExposureMeteringMode(const PentaxTetherLib::AutoExposureMode& ae_mode);
+    uint32_t registerAutoExposureMeteringModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoExposureMode&)>& callback);
+
+    PentaxTetherLib::WhiteBalanceMode getWhiteBalanceMode(bool forceStatusUpdate);
+    bool setWhiteBalanceMode(const PentaxTetherLib::WhiteBalanceMode& wb_mode);
+    uint32_t registerWhiteBalanceModeChangedCallback(const std::function<void(const PentaxTetherLib::WhiteBalanceMode&)>& callback);
+
+    std::pair<int32_t, int32_t> getWhiteBalanceAdjustment(bool forceStatusUpdate);
+    std::pair<int32_t, int32_t> getWhiteBalanceAdjustmentRange();
+    bool setWhiteBalanceAdjustment(const int32_t& magenta_green, const int32_t& blue_amber);
+    uint32_t registerWhiteBalanceAdjustmentChangedCallback(const std::function<void(const int32_t&, const int32_t&)>& callback);
+
+    PentaxTetherLib::FlashMode getFlashMode(bool forceStatusUpdate);
+    bool setFlashMode(const PentaxTetherLib::FlashMode& flash_mode);
+    uint32_t registerFlashModeChangedCallback(const std::function<void(const PentaxTetherLib::FlashMode&)>& callback);
+
+    PentaxTetherLib::Rational<int32_t> getFlashExposureCompensation(bool forceStatusUpdate);
+    bool setFlashExposureCompensation(const PentaxTetherLib::Rational<int32_t>& shutterTime);
+    std::vector<PentaxTetherLib::Rational<int32_t>> getFlashExposureCompensationSteps(bool forceStatusUpdate);
+    uint32_t registerFlashExposureCompensationChangedCallback(const std::function<void(const PentaxTetherLib::Rational<int32_t>&)>& callback);
 
 	void unregisterCallback(const uint32_t& callbackIdentifier);
 
@@ -184,15 +205,25 @@ private:
 	static pslr_af_point_sel_t toPSLR(const PentaxTetherLib::AutoFocusPointSelectionMode& e, const uint32_t& numberOfAFPoints);
     static PentaxTetherLib::ColorDynamicsMode fromPSLR(const pslr_jpeg_image_tone_t& e);
     static pslr_jpeg_image_tone_t toPSLR(const PentaxTetherLib::ColorDynamicsMode& e);
+    static PentaxTetherLib::AutoExposureMode fromPSLR(const pslr_ae_metering_t& e);
+    static pslr_ae_metering_t toPSLR(const PentaxTetherLib::AutoExposureMode& e);
+    static PentaxTetherLib::WhiteBalanceMode fromPSLR(const pslr_white_balance_mode_t& e);
+    static pslr_white_balance_mode_t toPSLR(const PentaxTetherLib::WhiteBalanceMode& e);
+    static PentaxTetherLib::FlashMode fromPSLR(const pslr_flash_mode_t& e);
+    static pslr_flash_mode_t toPSLR(const PentaxTetherLib::FlashMode& e);
 
 	static std::vector<uint32_t> decodeAutoFocusPoints(const uint32_t& autoFocusFlagList, const uint32_t& numberOfAFPoints);
 	static uint32_t encodeAutoFocusPoints(const std::vector<uint32_t>& af_point_indices, const uint32_t& numberOfAFPoints);
+    int32_t decodeWhiteBalanceAdjustment(const uint32_t& wb_adj) const;
+    uint32_t encodeWhiteBalanceAdjustment(const int32_t& wb_adj) const;
 
 	static std::vector<float> batteryStateFromPSLR(const std::shared_ptr<pslr_status>& status);
 	
 	static double calculateExposureValue(const std::shared_ptr<pslr_status>& status);
     
     int32_t getJPEGPropertyOffset() const;
+    int32_t getWhiteBalanceAdjustmentOffset() const;
+
 
 
 	PentaxTetherLib::Options options_;
@@ -224,11 +255,18 @@ private:
 	std::map< uint32_t, std::function<void(double)> > exposureValueCallbacks_;
 	std::map< uint32_t, std::function<void(const PentaxTetherLib::AutoFocusPointSelectionMode&)> > autoFocusPointSelectionModeCallbacks_;
 	std::map< uint32_t, std::function<void(const std::vector<uint32_t>&)> > selectedAutoFocusPointIndexCallbacks_;
-    std::map< uint32_t, std::function<void(const PentaxTetherLib::ColorDynamicsMode&)> > ColorDynamicsModeModeCallbacks_;
+    std::map< uint32_t, std::function<void(const PentaxTetherLib::ColorDynamicsMode&)> > colorDynamicsModeModeCallbacks_;
     std::map< uint32_t, std::function<void(const int32_t&)> > jpegSaturationCallbacks_;
     std::map< uint32_t, std::function<void(const int32_t&)> > jpegHueCallbacks_;
     std::map< uint32_t, std::function<void(const int32_t&)> > jpegContrastCallbacks_;
     std::map< uint32_t, std::function<void(const int32_t&)> > jpegSharpnessCallbacks_;
+    std::map< uint32_t, std::function<void(const PentaxTetherLib::AutoExposureMode&)> > autoExposureModeCallbacks_;
+    std::map< uint32_t, std::function<void(const PentaxTetherLib::WhiteBalanceMode&)> > whiteBalanceModeCallbacks_;
+    std::map< uint32_t, std::function<void(const int32_t&, const int32_t&)> > whiteBalanceAdjustmentCallbacks_;
+    std::map< uint32_t, std::function<void(const PentaxTetherLib::FlashMode&)> > flashModeCallbacks_;
+    std::map< uint32_t, std::function<void(const PentaxTetherLib::Rational<int32_t>&)> > flashExposureCompensationCallbacks_;
+
+    
 };
 
 
@@ -618,6 +656,7 @@ int32_t PentaxTetherLib::getToneContrast(bool forceStatusUpdate)
     return impl_->getToneContrast(forceStatusUpdate);
 }
 
+
 bool PentaxTetherLib::setToneContrast(const int32_t& contrast)
 {
     return impl_->setToneContrast(contrast);
@@ -627,6 +666,7 @@ std::pair<int32_t, int32_t> PentaxTetherLib::getToneContrastLimits()
 {
     return impl_->getToneContrastLimits();
 }
+
 
 uint32_t PentaxTetherLib::registerToneContrastChangedCallback(const std::function<void(const int32_t&)>& callback)
 {
@@ -639,6 +679,7 @@ int32_t PentaxTetherLib::getToneSharpness(bool forceStatusUpdate)
     return impl_->getToneSharpness(forceStatusUpdate);
 }
 
+
 bool PentaxTetherLib::setToneSharpness(const int32_t& sharpness)
 {
     return impl_->setToneSharpness(sharpness);
@@ -649,10 +690,116 @@ std::pair<int32_t, int32_t> PentaxTetherLib::getToneSharpnessLimits()
     return impl_->getToneSharpnessLimits();
 }
 
+
 uint32_t PentaxTetherLib::registerToneSharpnessChangedCallback(const std::function<void(const int32_t&)>& callback)
 {
     return impl_->registerToneSharpnessChangedCallback(callback);
 }
+
+
+PentaxTetherLib::AutoExposureMode PentaxTetherLib::getAutoExposureMeteringMode(bool forceStatusUpdate)
+{
+    return impl_->getAutoExposureMeteringMode(forceStatusUpdate);
+}
+
+
+bool PentaxTetherLib::setAutoExposureMeteringMode(const PentaxTetherLib::AutoExposureMode& ae_mode)
+{
+    return impl_->setAutoExposureMeteringMode(ae_mode);
+}
+
+
+uint32_t PentaxTetherLib::registerAutoExposureMeteringModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoExposureMode&)>& callback)
+{
+    return impl_->registerAutoExposureMeteringModeChangedCallback(callback);
+}
+
+
+PentaxTetherLib::WhiteBalanceMode PentaxTetherLib::getWhiteBalanceMode(bool forceStatusUpdate)
+{
+    return impl_->getWhiteBalanceMode(forceStatusUpdate);
+}
+
+
+bool PentaxTetherLib::setWhiteBalanceMode(const PentaxTetherLib::WhiteBalanceMode& wb_mode)
+{
+    return impl_->setWhiteBalanceMode(wb_mode);
+}
+
+
+uint32_t PentaxTetherLib::registerWhiteBalanceModeChangedCallback(const std::function<void(const PentaxTetherLib::WhiteBalanceMode&)>& callback)
+{
+    return impl_->registerWhiteBalanceModeChangedCallback(callback);
+}
+
+
+
+std::pair<int32_t, int32_t> PentaxTetherLib::getWhiteBalanceAdjustment(bool forceStatusUpdate)
+{
+    return impl_->getWhiteBalanceAdjustment(forceStatusUpdate);
+}
+
+
+std::pair<int32_t, int32_t> PentaxTetherLib::getWhiteBalanceAdjustmentRange()
+{
+    return impl_->getWhiteBalanceAdjustmentRange();
+}
+
+
+bool PentaxTetherLib::setWhiteBalanceAdjustment(const int32_t& magenta_green, const int32_t& blue_amber)
+{
+    return impl_->setWhiteBalanceAdjustment(magenta_green, blue_amber);
+}
+
+
+uint32_t PentaxTetherLib::registerWhiteBalanceAdjustmentChangedCallback(const std::function<void(const int32_t&, const int32_t&)>& callback)
+{
+    return impl_->registerWhiteBalanceAdjustmentChangedCallback(callback);
+}
+
+
+PentaxTetherLib::FlashMode PentaxTetherLib::getFlashMode(bool forceStatusUpdate)
+{
+    return impl_->getFlashMode(forceStatusUpdate);
+}
+
+
+bool PentaxTetherLib::setFlashMode(const PentaxTetherLib::FlashMode& flash_mode)
+{
+    return impl_->setFlashMode(flash_mode);
+}
+
+
+uint32_t PentaxTetherLib::registerFlashModeChangedCallback(const std::function<void(const PentaxTetherLib::FlashMode&)>& callback)
+{
+    return impl_->registerFlashModeChangedCallback(callback);
+}
+
+
+PentaxTetherLib::Rational<int32_t> PentaxTetherLib::getFlashExposureCompensation(bool forceStatusUpdate)
+{
+    return impl_->getFlashExposureCompensation(forceStatusUpdate);
+}
+
+
+bool PentaxTetherLib::setFlashExposureCompensation(const PentaxTetherLib::Rational<int32_t>& shutterTime)
+{
+    return impl_->setFlashExposureCompensation(shutterTime);
+}
+
+
+std::vector<PentaxTetherLib::Rational<int32_t>> PentaxTetherLib::getFlashExposureCompensationSteps()
+{
+    return impl_->getFlashExposureCompensationSteps(false);
+}
+
+
+uint32_t PentaxTetherLib::registerFlashExposureCompensationChangedCallback(const std::function<void(const PentaxTetherLib::Rational<int32_t>&)>& callback)
+{
+    return impl_->registerFlashExposureCompensationChangedCallback(callback);
+}
+
+
 
 
 
@@ -841,12 +988,12 @@ void PentaxTetherLib::Impl::processStatusCallbacks()
 	}
 
     //! Color Dynamics (Tone) callback
-    if (ColorDynamicsModeModeCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    if (colorDynamicsModeModeCallbacks_.size() > 0 && currentStatus_ != nullptr)
     {
         if (lastStatus_ == nullptr || currentStatus_->jpeg_image_tone != lastStatus_->jpeg_image_tone)
         {
             std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
-            for (const auto& callback : ColorDynamicsModeModeCallbacks_)
+            for (const auto& callback : colorDynamicsModeModeCallbacks_)
             {
                 callback.second( fromPSLR( static_cast<pslr_jpeg_image_tone_t>(currentStatus_->jpeg_image_tone)));
             }
@@ -901,6 +1048,72 @@ void PentaxTetherLib::Impl::processStatusCallbacks()
             for (const auto& callback : jpegContrastCallbacks_)
             {
                 callback.second(currentStatus_->jpeg_contrast - getJPEGPropertyOffset());
+            }
+        }
+    }
+
+    //! Auto Exposure Mode callback
+    if (autoExposureModeCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->ae_metering_mode != lastStatus_->ae_metering_mode)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : autoExposureModeCallbacks_)
+            {
+                callback.second( fromPSLR( static_cast<pslr_ae_metering_t>( currentStatus_->ae_metering_mode ) ) );
+            }
+        }
+    }
+
+    //! White Balance Mode callback
+    if (whiteBalanceModeCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->white_balance_mode != lastStatus_->white_balance_mode)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : whiteBalanceModeCallbacks_)
+            {
+                callback.second(fromPSLR(static_cast<pslr_white_balance_mode_t>(currentStatus_->white_balance_mode)));
+            }
+        }
+    }
+
+    //! White Balance Adjustment callback
+    if (whiteBalanceAdjustmentCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->white_balance_adjust_mg != lastStatus_->white_balance_adjust_mg
+                                   || currentStatus_->white_balance_adjust_ba != lastStatus_->white_balance_adjust_ba)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : whiteBalanceAdjustmentCallbacks_)
+            {
+                callback.second(decodeWhiteBalanceAdjustment(currentStatus_->white_balance_adjust_mg), decodeWhiteBalanceAdjustment(currentStatus_->white_balance_adjust_ba));
+            }
+        }
+    }
+
+    //! Flash Mode callback
+    if (flashModeCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->flash_mode != lastStatus_->flash_mode)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : flashModeCallbacks_)
+            {
+                callback.second(fromPSLR(static_cast<pslr_flash_mode_t>(currentStatus_->flash_mode)));
+            }
+        }
+    }
+
+    //! Flash Exposure Compensation callback
+    if (flashExposureCompensationCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->flash_exposure_compensation != lastStatus_->flash_exposure_compensation)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : flashExposureCompensationCallbacks_)
+            {
+                callback.second( PentaxTetherLib::Rational<int32_t>(currentStatus_->flash_exposure_compensation, 256));
             }
         }
     }
@@ -1051,11 +1264,16 @@ void PentaxTetherLib::Impl::unregisterCallback(const uint32_t& callbackIdentifie
 	autoFocusModeCallbacks_.erase(callbackIdentifier);
 	autoFocusPointSelectionModeCallbacks_.erase(callbackIdentifier);
 	selectedAutoFocusPointIndexCallbacks_.erase(callbackIdentifier);
-    ColorDynamicsModeModeCallbacks_.erase(callbackIdentifier);
+    colorDynamicsModeModeCallbacks_.erase(callbackIdentifier);
     jpegContrastCallbacks_.erase(callbackIdentifier);
     jpegSaturationCallbacks_.erase(callbackIdentifier);
     jpegSharpnessCallbacks_.erase(callbackIdentifier);
     jpegHueCallbacks_.erase(callbackIdentifier);
+    autoExposureModeCallbacks_.erase(callbackIdentifier);
+    whiteBalanceModeCallbacks_.erase(callbackIdentifier);
+    whiteBalanceAdjustmentCallbacks_.erase(callbackIdentifier);
+    flashModeCallbacks_.erase(callbackIdentifier);
+    flashExposureCompensationCallbacks_.erase(callbackIdentifier);
 }
 
 
@@ -1826,6 +2044,162 @@ bool PentaxTetherLib::Impl::setToneSharpness(const int32_t& sharpness)
 }
 
 
+PentaxTetherLib::AutoExposureMode PentaxTetherLib::Impl::getAutoExposureMeteringMode(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return PentaxTetherLib::AUTOEXPOSURE_METERING_INVALID;
+    }
+    else
+    {
+        return fromPSLR( static_cast<pslr_ae_metering_t>( status->ae_metering_mode ) );
+    }
+}
+
+
+bool PentaxTetherLib::Impl::setAutoExposureMeteringMode(const PentaxTetherLib::AutoExposureMode& ae_mode)
+{
+    auto status = pollStatus(true);
+    if (nullptr != status && status->ae_metering_mode != toPSLR(ae_mode) )
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        return testResult(pslr_set_ae_metering_mode(camhandle_, toPSLR(ae_mode)));
+    }
+
+    return false;
+}
+
+
+
+PentaxTetherLib::WhiteBalanceMode PentaxTetherLib::Impl::getWhiteBalanceMode(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return PentaxTetherLib::WHITE_BALANCE_MODE_INVALID;
+    }
+    else
+    {
+        return fromPSLR(static_cast<pslr_white_balance_mode_t>(status->white_balance_mode));
+    }
+}
+
+
+bool PentaxTetherLib::Impl::setWhiteBalanceMode(const PentaxTetherLib::WhiteBalanceMode& wb_mode)
+{
+    auto status = pollStatus(true);
+    if (nullptr != status && status->white_balance_mode != toPSLR(wb_mode))
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        return testResult(pslr_set_white_balance(camhandle_, toPSLR(wb_mode)));
+    }
+
+    return false;
+}
+
+
+std::pair<int32_t, int32_t> PentaxTetherLib::Impl::getWhiteBalanceAdjustment(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return std::make_pair(0, 0);
+    }
+    else
+    {
+        return std::make_pair(decodeWhiteBalanceAdjustment(status->white_balance_adjust_mg), decodeWhiteBalanceAdjustment(status->white_balance_adjust_ba));
+    }
+}
+
+
+bool PentaxTetherLib::Impl::setWhiteBalanceAdjustment(const int32_t& magenta_green, const int32_t& blue_amber)
+{
+    auto status = pollStatus(true);
+    if (nullptr != status && ( decodeWhiteBalanceAdjustment( status->white_balance_adjust_mg ) != magenta_green || 
+                               decodeWhiteBalanceAdjustment( status->white_balance_adjust_ba ) != blue_amber))
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        auto wb_mode = fromPSLR(static_cast<pslr_white_balance_mode_t>(status->white_balance_mode));
+
+        if (wb_mode != WHITE_BALANCE_MODE_INVALID)
+        {
+            return testResult(pslr_set_white_balance_adjustment(camhandle_, toPSLR(wb_mode), encodeWhiteBalanceAdjustment(magenta_green), encodeWhiteBalanceAdjustment(blue_amber)));
+        }
+    }
+
+    return false;
+}
+
+
+PentaxTetherLib::FlashMode PentaxTetherLib::Impl::getFlashMode(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return PentaxTetherLib::FLASH_MODE_INVALID;
+    }
+    else
+    {
+        return fromPSLR(static_cast<pslr_flash_mode_t>(status->flash_mode));
+    }
+}
+
+
+bool PentaxTetherLib::Impl::setFlashMode(const PentaxTetherLib::FlashMode& flash_mode)
+{
+    auto status = pollStatus(true);
+    if (nullptr != status && status->flash_mode != toPSLR(flash_mode))
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        return testResult(pslr_set_flash_mode(camhandle_, toPSLR(flash_mode)));
+    }
+
+    return false;
+}
+
+
+
+bool PentaxTetherLib::Impl::setFlashExposureCompensation(const PentaxTetherLib::Rational<int32_t>& fecValue)
+{
+    auto status = pollStatus(true);
+    if (nullptr != status && PentaxTetherLib::Rational<int32_t>(status->flash_exposure_compensation, 256) != fecValue)
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        return testResult(pslr_set_flash_exposure_compensation(camhandle_, toPSLR(fecValue) ));
+        
+    }
+    return false;
+}
+
+
+PentaxTetherLib::Rational<int32_t> PentaxTetherLib::Impl::getFlashExposureCompensation(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return PentaxTetherLib::Rational<int32_t>();
+    }
+    else
+    {
+        return PentaxTetherLib::Rational<int32_t>(status->flash_exposure_compensation,256);
+    }
+}
+
+
+
+
+
+
+std::pair<int32_t, int32_t> PentaxTetherLib::Impl::getWhiteBalanceAdjustmentRange()
+{
+    return std::make_pair(-getWhiteBalanceAdjustmentOffset(), getWhiteBalanceAdjustmentOffset());
+}
 
 
 std::pair<int32_t, int32_t> PentaxTetherLib::Impl::getToneSaturationLimits()
@@ -2028,6 +2402,30 @@ std::vector<PentaxTetherLib::Rational<int32_t>> PentaxTetherLib::Impl::getExposu
 
 
 
+std::vector<PentaxTetherLib::Rational<int32_t>> PentaxTetherLib::Impl::getFlashExposureCompensationSteps(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return std::vector<PentaxTetherLib::Rational<int32_t>>();
+    }
+
+    std::vector< PentaxTetherLib::Rational<int32_t> > flashExposureCompensationTable;
+    if (status->custom_ev_steps == PSLR_CUSTOM_EV_STEPS_1_2)
+    {
+        flashExposureCompensationTable = { { -10, 10 },{ -5, 10 },{ 0, 10 },{ 5, 10 },{ 10, 10 } };
+    }
+    else
+    {
+        flashExposureCompensationTable = {
+            { -10, 10 },{ -7, 10 },{ -3, 10 },{ 0, 10 },{ 3, 10 },{ 7, 10 },{ 10, 10 } };
+    }
+
+    return flashExposureCompensationTable;
+}
+
+
+
 uint32_t PentaxTetherLib::Impl::registerConnectionChangedCallback(const std::function<void(bool)>& callback)
 {
 	std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
@@ -2176,7 +2574,52 @@ uint32_t PentaxTetherLib::Impl::registerColorDynamicsModeChangedCallback(const s
 {
     std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
     uint32_t id = (++nextCallbackIdentifier_);
-    ColorDynamicsModeModeCallbacks_.insert({ id, callback });
+    colorDynamicsModeModeCallbacks_.insert({ id, callback });
+    return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerAutoExposureMeteringModeChangedCallback(const std::function<void(const PentaxTetherLib::AutoExposureMode&)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    autoExposureModeCallbacks_.insert({ id, callback });
+    return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerWhiteBalanceModeChangedCallback(const std::function<void(const PentaxTetherLib::WhiteBalanceMode&)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    whiteBalanceModeCallbacks_.insert({ id, callback });
+    return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerWhiteBalanceAdjustmentChangedCallback(const std::function<void(const int32_t&, const int32_t&)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    whiteBalanceAdjustmentCallbacks_.insert({ id, callback });
+    return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerFlashModeChangedCallback(const std::function<void(const PentaxTetherLib::FlashMode&)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    flashModeCallbacks_.insert({ id, callback });
+    return id;
+}
+
+
+uint32_t PentaxTetherLib::Impl::registerFlashExposureCompensationChangedCallback(const std::function<void(const PentaxTetherLib::Rational<int32_t>&)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    flashExposureCompensationCallbacks_.insert({ id, callback });
     return id;
 }
 
@@ -2307,6 +2750,43 @@ pslr_jpeg_image_tone_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::Colo
 {
     return static_cast<pslr_jpeg_image_tone_t>(e);
 }
+
+
+PentaxTetherLib::AutoExposureMode PentaxTetherLib::Impl::fromPSLR(const pslr_ae_metering_t& e)
+{
+    return static_cast<PentaxTetherLib::AutoExposureMode>(e);
+}
+
+
+pslr_ae_metering_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::AutoExposureMode& e)
+{
+    return static_cast<pslr_ae_metering_t>(e);
+}
+
+
+PentaxTetherLib::WhiteBalanceMode PentaxTetherLib::Impl::fromPSLR(const pslr_white_balance_mode_t& e)
+{
+    return static_cast<PentaxTetherLib::WhiteBalanceMode>(e);
+}
+
+
+pslr_white_balance_mode_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::WhiteBalanceMode& e)
+{
+    return static_cast<pslr_white_balance_mode_t>(e);
+}
+
+
+PentaxTetherLib::FlashMode PentaxTetherLib::Impl::fromPSLR(const pslr_flash_mode_t& e)
+{
+    return static_cast<PentaxTetherLib::FlashMode>(e);
+}
+
+
+pslr_flash_mode_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::FlashMode& e)
+{
+    return static_cast<pslr_flash_mode_t>(e);
+}
+
 
 
 std::vector<uint32_t> PentaxTetherLib::Impl::decodeAutoFocusPoints(const uint32_t& autoFocusFlagList, const uint32_t& numberOfAFPoints)
@@ -2468,6 +2948,25 @@ double PentaxTetherLib::Impl::calculateExposureValue(const std::shared_ptr<pslr_
 	}
 
 	return 0;
+}
+
+
+
+int32_t PentaxTetherLib::Impl::getWhiteBalanceAdjustmentOffset() const
+{
+    return 7;
+}
+
+
+int32_t PentaxTetherLib::Impl::decodeWhiteBalanceAdjustment( const uint32_t& wb_adj) const
+{
+    return wb_adj - getWhiteBalanceAdjustmentOffset();
+}
+
+
+uint32_t PentaxTetherLib::Impl::encodeWhiteBalanceAdjustment(const int32_t& wb_adj) const
+{
+    return wb_adj + getWhiteBalanceAdjustmentOffset();
 }
 
 
