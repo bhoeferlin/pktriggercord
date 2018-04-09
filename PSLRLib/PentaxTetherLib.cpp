@@ -186,6 +186,9 @@ public:
     std::vector<PentaxTetherLib::Rational<int32_t>> getFlashExposureCompensationSteps(bool forceStatusUpdate);
     uint32_t registerFlashExposureCompensationChangedCallback(const std::function<void(const PentaxTetherLib::Rational<int32_t>&)>& callback);
 
+    bool getShakeReduction(bool forceStatusUpdate = false);
+    uint32_t registerShakeReductionChangedCallback(const std::function<void(bool)>& callback);
+
 	void unregisterCallback(const uint32_t& callbackIdentifier);
 
 private:
@@ -265,6 +268,7 @@ private:
     std::map< uint32_t, std::function<void(const int32_t&, const int32_t&)> > whiteBalanceAdjustmentCallbacks_;
     std::map< uint32_t, std::function<void(const PentaxTetherLib::FlashMode&)> > flashModeCallbacks_;
     std::map< uint32_t, std::function<void(const PentaxTetherLib::Rational<int32_t>&)> > flashExposureCompensationCallbacks_;
+    std::map< uint32_t, std::function<void(bool)> > shakeReductionCallbacks_;
 
     
 };
@@ -800,6 +804,18 @@ uint32_t PentaxTetherLib::registerFlashExposureCompensationChangedCallback(const
 }
 
 
+bool PentaxTetherLib::getShakeReduction(bool forceStatusUpdate)
+{
+    return impl_->getShakeReduction(forceStatusUpdate);
+}
+
+
+uint32_t PentaxTetherLib::registerShakeReductionChangedCallback(const std::function<void(bool)>& callback)
+{
+    return impl_->registerShakeReductionChangedCallback(callback);
+}
+
+
 
 
 
@@ -1117,6 +1133,19 @@ void PentaxTetherLib::Impl::processStatusCallbacks()
             }
         }
     }
+
+    //! Shake Reduction callback
+    if (shakeReductionCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->shake_reduction != lastStatus_->shake_reduction)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : shakeReductionCallbacks_)
+            {
+                callback.second(currentStatus_->shake_reduction > 0);
+            }
+        }
+    }
 }
 
 
@@ -1274,6 +1303,7 @@ void PentaxTetherLib::Impl::unregisterCallback(const uint32_t& callbackIdentifie
     whiteBalanceAdjustmentCallbacks_.erase(callbackIdentifier);
     flashModeCallbacks_.erase(callbackIdentifier);
     flashExposureCompensationCallbacks_.erase(callbackIdentifier);
+    shakeReductionCallbacks_.erase(callbackIdentifier);
 }
 
 
@@ -2192,6 +2222,18 @@ PentaxTetherLib::Rational<int32_t> PentaxTetherLib::Impl::getFlashExposureCompen
 }
 
 
+bool PentaxTetherLib::Impl::getShakeReduction(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return false;
+    }
+    else
+    {
+        return status->shake_reduction > 0;
+    }
+}
 
 
 
@@ -2622,6 +2664,17 @@ uint32_t PentaxTetherLib::Impl::registerFlashExposureCompensationChangedCallback
     flashExposureCompensationCallbacks_.insert({ id, callback });
     return id;
 }
+
+
+uint32_t PentaxTetherLib::Impl::registerShakeReductionChangedCallback(const std::function<void(bool)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    shakeReductionCallbacks_.insert({ id, callback });
+    return id;
+}
+
+
 
 
 

@@ -335,6 +335,8 @@ public:
     std::vector<PentaxTetherLib::Rational<int32_t>> getFlashExposureCompensationSteps();
     uint32_t registerFlashExposureCompensationChangedCallback(const std::function<void(const PentaxTetherLib::Rational<int32_t>&)>& callback);
     
+    bool getShakeReduction(bool forceStatusUpdate = false);
+    uint32_t registerShakeReductionChangedCallback(const std::function<void(bool)>& callback);
 
 
 	//! Actions
