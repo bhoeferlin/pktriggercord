@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <atomic>
 
 
 #if defined(PENTAX_TETHER_LIB_EXPORT) 
@@ -133,7 +134,6 @@ public:
         WHITE_BALANCE_MODE_MULTI_AUTO
     };
 
-
     enum FlashMode
     {
         FLASH_MODE_INVALID = -1,
@@ -148,6 +148,20 @@ public:
         FLASH_MODE_WIRELESS_MASTER = 8,
         FLASH_MODE_WIRELESS_CONTROL = 9,
         FLASH_MODE_MANUAL = 10
+    };
+
+    enum ReleaseMode 
+    {
+        RELEASE_MODE_INVALID = -1,
+        RELEASE_MODE_SINGLE = 0,
+        RELEASE_DRIVE_MODE_CONTINUOUS_HI = 1,
+        RELEASE_DRIVE_MODE_SELF_TIMER_12 = 2,
+        RELEASE_DRIVE_MODE_SELF_TIMER_2 = 3,
+        RELEASE_DRIVE_MODE_REMOTE = 4,
+        RELEASE_DRIVE_MODE_REMOTE_3 = 5,
+        RELEASE_DRIVE_MODE_CONTINUOUS_LO = 6,
+        RELEASE_DRIVE_MODE_REMOTE_CONTINUOUS = 7,
+        RELEASE_DRIVE_MODE_CONTINUOUS_MED = 8
     };
 
 
@@ -225,7 +239,11 @@ public:
 	PentaxTetherLib::PentaxTetherLib(PentaxTetherLib &&) noexcept = delete;
 	PentaxTetherLib& PentaxTetherLib::operator=(PentaxTetherLib &&) noexcept = delete;
 
-	bool connect(unsigned int timeout_ms);
+    /**
+     * @param cancelationFlag - if not null, this atomic bool will be stored as member (attention on scope!) and used
+     *                          to test if connect and reconnects should be cancelled.
+     */
+	bool connect(unsigned int timeout_ms, std::atomic<bool>* cancelationFlag = nullptr);
 	void disconnect();
 	bool isConnected() const;
 	uint32_t registerConnectionChangedCallback(const std::function<void(bool)>& callback);
@@ -338,6 +356,12 @@ public:
     bool getShakeReduction(bool forceStatusUpdate = false);
     uint32_t registerShakeReductionChangedCallback(const std::function<void(bool)>& callback);
 
+    PentaxTetherLib::ReleaseMode getReleaseMode(bool forceStatusUpdate = false);
+    bool setReleaseMode(const PentaxTetherLib::ReleaseMode& release_mode);
+    uint32_t registerReleaseModeChangedCallback(const std::function<void(const PentaxTetherLib::ReleaseMode&)>& callback);
+
+
+
 
 	//! Actions
 
@@ -371,7 +395,7 @@ public:
 private:
 
 	class Impl;                     
-	std::unique_ptr<Impl> impl_;    
+	std::unique_ptr<Impl> impl_;
 
 
 };

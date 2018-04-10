@@ -18,53 +18,6 @@ extern "C"
 
 
 
-int main()
-{
-	PentaxTetherLib::Options defaultOptions;
-	PentaxTetherLib tetherLib( defaultOptions );
-	if (tetherLib.connect(30))
-	{
-		std::cout << "Connected with: " << tetherLib.getCameraName() << std::endl;
-		std::cout << "ISO: " << tetherLib.getISO() << std::endl;
-
-		tetherLib.setFixedISO(100);
-		std::this_thread::sleep_for(std::chrono::seconds(2));
-		std::cout << "ISO: " << tetherLib.getISO() << std::endl;
-
-		tetherLib.setFixedISO(600);
-		std::this_thread::sleep_for(std::chrono::seconds(2));
-		std::cout << "ISO: " << tetherLib.getISO() << std::endl;
-
-		if (tetherLib.executeFocus().size() > 0)
-		{
-			std::cout << "Focus done!" << std::endl;
-			std::this_thread::sleep_for(std::chrono::seconds(2));
-			uint32_t bufferIndex = tetherLib.executeShutter();
-			tetherLib.getPreviewImage(bufferIndex);
-
-//			tetherLib.getImage(bufferIndex);
-		}
-		else
-		{
-			std::cout << "Focus NOT done!" << std::endl;
-		}
-
-	}
-	else
-	{
-		std::cout << "Not connected!" << std::endl;
-	}
-
-	std::this_thread::sleep_for(std::chrono::seconds(10));
-
-	return 0;
-}
-
-
-
-
-
-
 class PentaxTetherLib::Impl
 {
 public:
@@ -75,7 +28,7 @@ public:
 	std::shared_ptr<pslr_status> pollStatus(bool forceStatusUpdate = false);
 	bool testResult(const int& result);
 
-	bool connect(unsigned int timeout_sec);
+	bool connect(unsigned int timeout_sec, std::atomic<bool>* cancelationFlag);
 	void disconnect();
 	bool isConnected() const;
 	uint32_t registerConnectionChangedCallback(const std::function<void(bool)>& callback);
@@ -189,6 +142,10 @@ public:
     bool getShakeReduction(bool forceStatusUpdate = false);
     uint32_t registerShakeReductionChangedCallback(const std::function<void(bool)>& callback);
 
+    PentaxTetherLib::ReleaseMode getReleaseMode(bool forceStatusUpdate);
+    bool setReleaseMode(const PentaxTetherLib::ReleaseMode& release_mode);
+    uint32_t registerReleaseModeChangedCallback(const std::function<void(const PentaxTetherLib::ReleaseMode&)>& callback);
+
 	void unregisterCallback(const uint32_t& callbackIdentifier);
 
 private:
@@ -214,6 +171,8 @@ private:
     static pslr_white_balance_mode_t toPSLR(const PentaxTetherLib::WhiteBalanceMode& e);
     static PentaxTetherLib::FlashMode fromPSLR(const pslr_flash_mode_t& e);
     static pslr_flash_mode_t toPSLR(const PentaxTetherLib::FlashMode& e);
+    static PentaxTetherLib::ReleaseMode fromPSLR(const pslr_drive_mode_t& e);
+    static pslr_drive_mode_t toPSLR(const PentaxTetherLib::ReleaseMode& e);
 
 	static std::vector<uint32_t> decodeAutoFocusPoints(const uint32_t& autoFocusFlagList, const uint32_t& numberOfAFPoints);
 	static uint32_t encodeAutoFocusPoints(const std::vector<uint32_t>& af_point_indices, const uint32_t& numberOfAFPoints);
@@ -230,6 +189,7 @@ private:
 
 
 	PentaxTetherLib::Options options_;
+    std::atomic<bool>* cancelationFlag_{nullptr};
 
 	void* camhandle_{ nullptr };
 	std::mutex camCommunicationMutex_;
@@ -269,8 +229,7 @@ private:
     std::map< uint32_t, std::function<void(const PentaxTetherLib::FlashMode&)> > flashModeCallbacks_;
     std::map< uint32_t, std::function<void(const PentaxTetherLib::Rational<int32_t>&)> > flashExposureCompensationCallbacks_;
     std::map< uint32_t, std::function<void(bool)> > shakeReductionCallbacks_;
-
-    
+    std::map< uint32_t, std::function<void(const PentaxTetherLib::ReleaseMode&)> > releaseModeCallbacks_;
 };
 
 
@@ -287,9 +246,9 @@ PentaxTetherLib::~PentaxTetherLib()
 
 
 
-bool PentaxTetherLib::connect(unsigned int timeout_sec)
+bool PentaxTetherLib::connect(unsigned int timeout_sec, std::atomic<bool>* cancelationFlag)
 {
-	return impl_->connect(timeout_sec);
+	return impl_->connect(timeout_sec, cancelationFlag);
 }
 
 
@@ -816,6 +775,22 @@ uint32_t PentaxTetherLib::registerShakeReductionChangedCallback(const std::funct
 }
 
 
+PentaxTetherLib::ReleaseMode PentaxTetherLib::getReleaseMode(bool forceStatusUpdate)
+{
+    return impl_->getReleaseMode(forceStatusUpdate);
+}
+
+
+bool PentaxTetherLib::setReleaseMode(const PentaxTetherLib::ReleaseMode& flash_mode)
+{
+    return impl_->setReleaseMode(flash_mode);
+}
+
+
+uint32_t PentaxTetherLib::registerReleaseModeChangedCallback(const std::function<void(const PentaxTetherLib::ReleaseMode&)>& callback)
+{
+    return impl_->registerReleaseModeChangedCallback(callback);
+}
 
 
 
@@ -1146,6 +1121,19 @@ void PentaxTetherLib::Impl::processStatusCallbacks()
             }
         }
     }
+
+    //! Release Mode callback
+    if (releaseModeCallbacks_.size() > 0 && currentStatus_ != nullptr)
+    {
+        if (lastStatus_ == nullptr || currentStatus_->drive_mode != lastStatus_->drive_mode)
+        {
+            std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+            for (const auto& callback : releaseModeCallbacks_)
+            {
+                callback.second(fromPSLR(static_cast<pslr_drive_mode_t>(currentStatus_->drive_mode)));
+            }
+        }
+    }
 }
 
 
@@ -1198,7 +1186,7 @@ bool PentaxTetherLib::Impl::testResult(const int& result)
 		camhandle_ = nullptr;
 		if (options_.reconnect)
 		{
-			connect(options_.reconnectionTimeout);
+			connect(options_.reconnectionTimeout, cancelationFlag_ );
 		}
 		return false;
 	case PSLR_SCSI_ERROR:
@@ -1217,8 +1205,10 @@ bool PentaxTetherLib::Impl::testResult(const int& result)
 }
 
 
-bool PentaxTetherLib::Impl::connect(unsigned int timeout_sec)
+bool PentaxTetherLib::Impl::connect(unsigned int timeout_sec, std::atomic<bool>* cancelationFlag)
 {
+    cancelationFlag_ = cancelationFlag;
+
 	disconnect();
 
 	time_t startTime;
@@ -1226,6 +1216,14 @@ bool PentaxTetherLib::Impl::connect(unsigned int timeout_sec)
 
 	while (!(camhandle_ = pslr_init(NULL, NULL)))
 	{
+        if (nullptr != cancelationFlag)
+        {
+            if (cancelationFlag->load())
+            {
+                return false;
+            }
+        }
+
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 
 		time_t currentTime;
@@ -1304,6 +1302,7 @@ void PentaxTetherLib::Impl::unregisterCallback(const uint32_t& callbackIdentifie
     flashModeCallbacks_.erase(callbackIdentifier);
     flashExposureCompensationCallbacks_.erase(callbackIdentifier);
     shakeReductionCallbacks_.erase(callbackIdentifier);
+    releaseModeCallbacks_.erase(callbackIdentifier);
 }
 
 
@@ -2236,6 +2235,35 @@ bool PentaxTetherLib::Impl::getShakeReduction(bool forceStatusUpdate)
 }
 
 
+PentaxTetherLib::ReleaseMode PentaxTetherLib::Impl::getReleaseMode(bool forceStatusUpdate)
+{
+    auto status = pollStatus(forceStatusUpdate);
+    if (nullptr == status)
+    {
+        return PentaxTetherLib::RELEASE_MODE_INVALID;
+    }
+    else
+    {
+        return fromPSLR(static_cast<pslr_drive_mode_t>(status->drive_mode));
+    }
+}
+
+
+bool PentaxTetherLib::Impl::setReleaseMode(const PentaxTetherLib::ReleaseMode& release_mode)
+{
+    auto status = pollStatus(true);
+    if (nullptr != status && status->drive_mode != toPSLR(release_mode))
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        return testResult(pslr_set_drive_mode(camhandle_, toPSLR(release_mode)));
+    }
+
+    return false;
+}
+
+
+
 
 
 std::pair<int32_t, int32_t> PentaxTetherLib::Impl::getWhiteBalanceAdjustmentRange()
@@ -2675,6 +2703,14 @@ uint32_t PentaxTetherLib::Impl::registerShakeReductionChangedCallback(const std:
 }
 
 
+uint32_t PentaxTetherLib::Impl::registerReleaseModeChangedCallback(const std::function<void(const PentaxTetherLib::ReleaseMode&)>& callback)
+{
+    std::lock_guard<std::recursive_mutex> lock(callbackMutex_);
+    uint32_t id = (++nextCallbackIdentifier_);
+    releaseModeCallbacks_.insert({ id, callback });
+    return id;
+}
+
 
 
 
@@ -2841,11 +2877,30 @@ pslr_flash_mode_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::FlashMode
 }
 
 
+PentaxTetherLib::ReleaseMode PentaxTetherLib::Impl::fromPSLR(const pslr_drive_mode_t& e)
+{
+    return static_cast<PentaxTetherLib::ReleaseMode>(e);
+}
+
+
+pslr_drive_mode_t PentaxTetherLib::Impl::toPSLR(const PentaxTetherLib::ReleaseMode& e)
+{
+    return static_cast<pslr_drive_mode_t>(e);
+}
+
+
+
 
 std::vector<uint32_t> PentaxTetherLib::Impl::decodeAutoFocusPoints(const uint32_t& autoFocusFlagList, const uint32_t& numberOfAFPoints)
 {
 	// Indices will be ordered, such that top left af point has index 0, and indices are increasing in row-major form
 	std::vector<uint32_t> focusPoints;
+
+    if (autoFocusFlagList == 0)
+    {
+        // Hack
+        return std::vector<uint32_t>{ (numberOfAFPoints-1)/2 };
+    }
 
 	switch (numberOfAFPoints)
 	{
