@@ -41,6 +41,7 @@ public:
 	std::vector<uint32_t> executeFocus();
 	int32_t executeShutter();
 	bool executeDustRemoval();
+    bool shutdownCamera();
 
 
 	std::vector<uint8_t> getImage(int bufferIndex, ImageFormat format, JpgQuality jpgQuality, ImageResolution resolution, std::function<void(float)> progressCallback);
@@ -303,6 +304,12 @@ std::vector<uint32_t> PentaxTetherLib::executeFocus()
 bool PentaxTetherLib::executeDustRemoval()
 {
 	return impl_->executeDustRemoval();
+}
+
+
+bool PentaxTetherLib::shutdownCamera()
+{
+    return impl_->shutdownCamera();
 }
 
 
@@ -1260,6 +1267,7 @@ void PentaxTetherLib::Impl::disconnect()
 		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
 
 		pslr_disconnect(camhandle_);
+        camhandle_ = nullptr;
 	}
 
 	// Inform listeners
@@ -1384,10 +1392,23 @@ bool PentaxTetherLib::Impl::executeDustRemoval()
 	if (isConnected())
 	{
 		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
-
 		return testResult(pslr_dust_removal(camhandle_));
 	}
 	return false;
+}
+
+
+bool PentaxTetherLib::Impl::shutdownCamera()
+{
+    if (isConnected())
+    {
+        std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+
+        bool result = testResult(pslr_shutdown(camhandle_));
+        camhandle_ = nullptr;
+        return result;
+    }
+    return false;
 }
 
 

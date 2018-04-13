@@ -229,6 +229,23 @@ public:
 		{
 			return !(*this == a);
 		}
+
+        template< typename DT>
+        static Rational<DT> FromNearestDouble( double d, std::vector< Rational<DT> > possibleValues)
+        {
+            Rational<DT> bestMatch = Rational<DT>();
+            double minDist = std::numeric_limits<double>::max();
+            for (const auto& v : possibleValues)
+            {
+                if (fabs(d - v.toDouble()) < minDist)
+                {
+                    minDist = fabs(d - v.toDouble());
+                    bestMatch = v;
+                }
+            }
+
+            return bestMatch;
+        }
 	};
 
 	static constexpr int32_t InvalidBufferIndex{ -1 };
@@ -382,6 +399,8 @@ public:
      */
 	bool executeDustRemoval();
 
+
+    bool shutdownCamera();
 
 
 	std::vector<uint8_t> getImage( int bufferIndex, ImageFormat format = IF_CURRENT_CAM_SETTING, JpgQuality jpgQuality = JPEG_CURRENT_CAM_SETTING, ImageResolution resolution = RES_CURRENT_CAM_SETTING, std::function<void(float)> progressCallback = nullptr );
