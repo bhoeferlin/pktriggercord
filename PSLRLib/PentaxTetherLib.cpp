@@ -1190,13 +1190,12 @@ bool PentaxTetherLib::Impl::testResult(const int& result)
 	case PSLR_OK:
 		return true;
 	case PSLR_DEVICE_ERROR:
-		camhandle_ = nullptr;
+    case PSLR_SCSI_ERROR:		
+        camhandle_ = nullptr;
 		if (options_.reconnect)
 		{
 			connect(options_.reconnectionTimeout, cancelationFlag_ );
 		}
-		return false;
-	case PSLR_SCSI_ERROR:
 		return false;
 	case PSLR_COMMAND_ERROR:
 		return false;
