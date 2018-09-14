@@ -814,6 +814,10 @@ PentaxTetherLib::Impl::Impl( const PentaxTetherLib::Options& options)
 													{ 
 														pollStatus(false);
 													}
+                                                    else
+                                                    {
+                                                        return;
+                                                    }
 												}
 											}))
 {
@@ -1149,32 +1153,35 @@ std::shared_ptr<pslr_status> PentaxTetherLib::Impl::pollStatus(bool forceStatusU
 	if (isConnected())
 	{
 		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
+        if (isConnected())
+        {
 
-		time_t now;
-		time(&now);
+            time_t now;
+            time(&now);
 
-		std::lock_guard<std::recursive_mutex> statusLock(statusMutex_);
-		if (forceStatusUpdate || difftime(now, statusUpdateTime_) > options_.statusMaxAge_sec)
-		{
-			std::shared_ptr<pslr_status> status = std::make_shared<pslr_status>();
+            std::lock_guard<std::recursive_mutex> statusLock(statusMutex_);
+            if (forceStatusUpdate || difftime(now, statusUpdateTime_) > options_.statusMaxAge_sec)
+            {
+                std::shared_ptr<pslr_status> status = std::make_shared<pslr_status>();
 
-			if (!testResult(pslr_get_status(camhandle_, status.get())))
-			{
-				currentStatus_.reset();
-				statusUpdateTime_ = 0;
-				return nullptr;
-			}
-			else
-			{
-				lastStatus_ = std::move(currentStatus_);
-				currentStatus_ = std::move(status);
-				statusUpdateTime_ = now;
+                if (!testResult(pslr_get_status(camhandle_, status.get())))
+                {
+                    currentStatus_.reset();
+                    statusUpdateTime_ = 0;
+                    return nullptr;
+                }
+                else
+                {
+                    lastStatus_ = std::move(currentStatus_);
+                    currentStatus_ = std::move(status);
+                    statusUpdateTime_ = now;
 
-				processStatusCallbacks();
+                    processStatusCallbacks();
 
-				return currentStatus_;
-			}
-		}
+                    return currentStatus_;
+                }
+            }
+        }
 
 		return currentStatus_;
 	}
@@ -1264,9 +1271,11 @@ void PentaxTetherLib::Impl::disconnect()
 	if (camhandle_ != nullptr)
 	{
 		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
-
-		pslr_disconnect(camhandle_);
-        camhandle_ = nullptr;
+        if (camhandle_ != nullptr)
+        {
+            pslr_disconnect(camhandle_);
+            camhandle_ = nullptr;
+        }
 	}
 
 	// Inform listeners
@@ -1402,10 +1411,11 @@ bool PentaxTetherLib::Impl::shutdownCamera()
     if (isConnected())
     {
         std::lock_guard<std::mutex> lock(camCommunicationMutex_);
-
-        bool result = testResult(pslr_shutdown(camhandle_));
+        
+        pslr_disconnect(camhandle_);
+        pslr_shutdown(camhandle_);
         camhandle_ = nullptr;
-        return result;
+        return true;
     }
     return false;
 }
