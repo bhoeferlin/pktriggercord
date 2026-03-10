@@ -1,27 +1,4 @@
-apply plugin: 'android'
-
-gradle.taskGraph.whenReady { taskGraph ->
-    if(taskGraph.hasTask(':assembleRelease')) {
-        def storePassword
-        def keyPassword
-        storePassword = System.console().readPassword("\n\n\nEnter keystore password: ")
-        storePassword = new String(storePassword)
-
-        if(storePassword.size() <= 0) {
-            throw new InvalidUserDataException("Empty keystore password")
-        }
-
-        keyPassword = System.console().readPassword("\nEnter key password: ")
-        keyPassword = new String(keyPassword)
-
-        if(keyPassword.size() <= 0) {
-            throw new InvalidUserDataException("Empty key password")
-        }
-
-        android.signingConfigs.release.storePassword = storePassword
-        android.signingConfigs.release.keyPassword = keyPassword
-    }
-}
+apply plugin: 'com.android.application'
 
 clean {
     delete 'assets'
@@ -35,8 +12,14 @@ gradle.projectsEvaluated {
 }
 
 android {
-    compileSdkVersion 26
-    buildToolsVersion "26.0.2"
+    compileSdkVersion 29
+    buildToolsVersion '29.0.2'
+
+    externalNativeBuild {
+        ndkBuild {
+            path "jni/Android.mk"
+        }
+    }
 
     sourceSets {          
         main {
@@ -53,18 +36,27 @@ android {
     defaultConfig {
         applicationId "info.melda.sala.pktriggercord"
         minSdkVersion 16
-        targetSdkVersion 26
-        versionCode 8405
-        versionName "0.84.05"
-        setProperty("archivesBaseName", "info.melda.sala.pktriggercord.PkTriggerCord-$versionName" );
+        targetSdkVersion 29
+        versionCode 8501
+        versionName "0.85.01"
+        setProperty("archivesBaseName", "info.melda.sala.pktriggercord.PkTriggerCord-$versionName" )
+        externalNativeBuild {
+            ndkBuild {
+                abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+                targets "pktriggercord-cli"
+                arguments  "V=1 install"
+            }
+        }
     }
 
     signingConfigs {
         release {
             storeFile file("${System.properties['user.home']}/progs/java_keystore_google_play.jks")
-            storePassword ''
+            def RELEASE_STORE_PASSWORD=project.properties['RELEASE_STORE_PASSWORD'] ?: ""
+            storePassword RELEASE_STORE_PASSWORD
             keyAlias 'melda'
-            keyPassword ''
+            def RELEASE_KEY_PASSWORD=project.properties['RELEASE_KEY_PASSWORD'] ?: ""
+            keyPassword RELEASE_KEY_PASSWORD
         }
     }
 
@@ -78,14 +70,28 @@ android {
 }
 
 dependencies {
-    compile fileTree(dir: 'libs', include: ['*.jar'])
+    api fileTree(dir: 'libs', include: ['*.jar'])
+    api 'androidx.appcompat:appcompat:1.2.0'
 }
 
 buildscript {
     repositories {
         jcenter()
+        maven {
+            url "https://maven.google.com"
+        }
+        google()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.2.+'
+        classpath 'com.android.tools.build:gradle:4.1.0'
+    }
+}
+
+allprojects {
+    repositories {
+        jcenter()
+        maven {
+            url "https://maven.google.com"
+        }
     }
 }

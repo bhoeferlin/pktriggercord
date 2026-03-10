@@ -1,6 +1,6 @@
 /*
     pkTriggerCord
-    Copyright (C) 2011-2018 Andras Salamon <andras.salamon@melda.info>
+    Copyright (C) 2011-2019 Andras Salamon <andras.salamon@melda.info>
     Remote control of Pentax DSLR cameras.
 
     Support for K200D added by Jens Dreyer <jens.dreyer@udo.edu> 04/2011
@@ -65,12 +65,12 @@ const char* pslr_flash_mode_str[PSLR_FLASH_MODE_MAX] = {
     "TrailingCurtain",
     "Auto",
     "Auto-RedEye",
-    "TrailingCurtain", // maybe in manual mode??
+    "TrailingCurtain", /* maybe in manual mode?? */
     "Wireless"
 };
 
 const char* pslr_drive_mode_str[PSLR_DRIVE_MODE_MAX] = {
-    "Single", // Bracketing also returns Single
+    "Single", /* Bracketing also returns Single */
     "Continuous-HI",
     "SelfTimer-12",
     "SelfTimer-2",
@@ -83,7 +83,22 @@ const char*  pslr_af_point_sel_str[PSLR_AF_POINT_SEL_MAX] = {
     "Auto-5",
     "Select",
     "Spot",
-    "Auto-11"
+    "Auto-11",
+    "Expanded"
+};
+
+const char*  pslr_af11_point_str[11] = {
+    "topleft",
+    "topmiddle",
+    "topright",
+    "farleft",
+    "middleleft",
+    "middlemiddle",
+    "middleright",
+    "farright",
+    "bottomleft",
+    "bottommiddle",
+    "bottomright"
 };
 
 const char* pslr_jpeg_image_tone_str[PSLR_JPEG_IMAGE_TONE_MAX] = {
@@ -112,7 +127,7 @@ const char* pslr_white_balance_mode_str[PSLR_WHITE_BALANCE_MODE_MAX] = {
     "Fluorescent_W",
     "Tungsten",
     "Flash",
-    "Manual", // sometimes called Manual1
+    "Manual", /* sometimes called Manual1 */
     "Manual2",
     "Manual3",
     "Kelvin1",
@@ -155,7 +170,7 @@ const char* pslr_scene_mode_str[PSLR_SCENE_MODE_MAX] = {
     "MACRO",
     "SPORT",
     "NIGHTSCENEPORTRAIT",
-    "NOFLASH",//10
+    "NOFLASH",
     "NIGHTSCENE",
     "SURFANDSNOW",
     "TEXT",
@@ -164,37 +179,32 @@ const char* pslr_scene_mode_str[PSLR_SCENE_MODE_MAX] = {
     "PET",
     "CANDLELIGHT",
     "MUSEUM",
-    "19", // ?
+    "19",
     "FOOD",
     "STAGE",
     "NIGHTSNAP",
     "SWALLOWDOF",
-    "24", // ?
+    "24",
     "NIGHTSCENEHDR",
     "BLUESKY",
     "FOREST",
-    "28", // ?
+    "28",
     "BLACKLIGHTSILHOUETTE"
 };
 
 
-// case insenstive comparison
-// strnicmp
-int str_comparison_i (const char *s1, const char *s2, size_t n) 
-{
-    if ( s1 == NULL ) 
-    {
+/* case insenstive comparison - strnicmp */
+int str_comparison_i (const char *s1, const char *s2, int n) {
+    if ( s1 == NULL ) {
         return s2 == NULL ? 0 : -(*s2);
     }
-    if (s2 == NULL) 
-    {
+    if (s2 == NULL) {
         return *s1;
     }
 
-    char c1='\0';  
-    char c2='\0';
+    char c1='\0', c2='\0';
     int length=0;
-    while ( length < n && (c1 = tolower (*s1)) == (c2 = tolower (*s2))) {
+    while ( length<n && (c1 = tolower (*s1)) == (c2 = tolower (*s2))) {
         if (*s1 == '\0') {
             break;
         }
@@ -220,97 +230,123 @@ int find_in_array( const char** array, int length, char* str ) {
     return found_index;
 }
 
+static
 const char *get_pslr_str( const char** array, int length, int value ) {
     if (value >=0 && value < length) {
         return array[value];
     } else {
         char *ret = malloc(128);
-        sprintf_s (ret, 128, "Unknown value: %d", value);
+        sprintf (ret, "Unknown value: %d", value);
         return ret;
     }
 }
 
 
-pslr_color_space_t get_pslr_color_space( char *str ) {
+pslr_color_space_t pslr_get_color_space( char *str ) {
     return find_in_array( pslr_color_space_str, sizeof(pslr_color_space_str)/sizeof(pslr_color_space_str[0]),str);
 }
 
-const char *get_pslr_color_space_str( pslr_color_space_t value ) {
+const char *pslr_get_color_space_str( pslr_color_space_t value ) {
     return get_pslr_str( pslr_color_space_str, sizeof(pslr_color_space_str)/sizeof(pslr_color_space_str[0]),value);
 }
 
-pslr_af_mode_t get_pslr_af_mode( char *str ) {
+pslr_af_mode_t pslr_get_af_mode( char *str ) {
     return find_in_array( pslr_af_mode_str, sizeof(pslr_af_mode_str)/sizeof(pslr_af_mode_str[0]),str);
 }
 
-const char *get_pslr_af_mode_str( pslr_af_mode_t value ) {
+const char *pslr_get_af_mode_str( pslr_af_mode_t value ) {
     return get_pslr_str( pslr_af_mode_str, sizeof(pslr_af_mode_str)/sizeof(pslr_af_mode_str[0]),value);
 }
 
-pslr_ae_metering_t get_pslr_ae_metering( char *str ) {
+pslr_ae_metering_t pslr_get_ae_metering( char *str ) {
     return find_in_array( pslr_ae_metering_str, sizeof(pslr_ae_metering_str)/sizeof(pslr_ae_metering_str[0]),str);
 }
 
-const char *get_pslr_ae_metering_str( pslr_ae_metering_t value ) {
+const char *pslr_get_ae_metering_str( pslr_ae_metering_t value ) {
     return get_pslr_str( pslr_ae_metering_str, sizeof(pslr_ae_metering_str)/sizeof(pslr_ae_metering_str[0]),value);
 }
 
-pslr_flash_mode_t get_pslr_flash_mode( char *str ) {
+pslr_flash_mode_t pslr_get_flash_mode( char *str ) {
     return find_in_array( pslr_flash_mode_str, sizeof(pslr_flash_mode_str)/sizeof(pslr_flash_mode_str[0]),str);
 }
 
-const char *get_pslr_flash_mode_str( pslr_flash_mode_t value ) {
+const char *pslr_get_flash_mode_str( pslr_flash_mode_t value ) {
     return get_pslr_str( pslr_flash_mode_str, sizeof(pslr_flash_mode_str)/sizeof(pslr_flash_mode_str[0]),value);
 }
 
-pslr_drive_mode_t get_pslr_drive_mode( char *str ) {
+pslr_drive_mode_t pslr_get_drive_mode( char *str ) {
     return find_in_array( pslr_drive_mode_str, sizeof(pslr_drive_mode_str)/sizeof(pslr_drive_mode_str[0]),str);
 }
 
-const char *get_pslr_drive_mode_str( pslr_drive_mode_t value ) {
+const char *pslr_get_drive_mode_str( pslr_drive_mode_t value ) {
     return get_pslr_str( pslr_drive_mode_str, sizeof(pslr_drive_mode_str)/sizeof(pslr_drive_mode_str[0]),value);
 }
 
-pslr_af_point_sel_t get_pslr_af_point_sel( char *str ) {
+pslr_af_point_sel_t pslr_get_af_point_sel( char *str ) {
     return find_in_array( pslr_af_point_sel_str, sizeof(pslr_af_point_sel_str)/sizeof(pslr_af_point_sel_str[0]),str);
 }
 
-const char *get_pslr_af_point_sel_str( pslr_af_point_sel_t value ) {
+const char *pslr_get_af_point_sel_str( pslr_af_point_sel_t value ) {
     return get_pslr_str( pslr_af_point_sel_str, sizeof(pslr_af_point_sel_str)/sizeof(pslr_af_point_sel_str[0]),value);
 }
 
-pslr_jpeg_image_tone_t get_pslr_jpeg_image_tone( char *str ) {
+char *pslr_get_af11_point_str( uint32_t value ) {
+    if (value==0) {
+        return "none";
+    }
+    int bitidx=0;
+    char *ret = malloc(1024);
+    int pos = sprintf(ret, "%s", "");
+    while (value>0 && bitidx<11) {
+        if ((value & 0x01) == 1) {
+            int written = sprintf(ret + pos, "%s%s", pos == 0 ? "" : ",", pslr_af11_point_str[bitidx]);
+            if (written < 0) {
+                return ret;
+            }
+            pos += written;
+        }
+        value >>= 1;
+        ++bitidx;
+    }
+    if (value>0) {
+        sprintf(ret, "%s", "invalid");
+    }
+    return ret;
+}
+
+
+pslr_jpeg_image_tone_t pslr_get_jpeg_image_tone( char *str ) {
     return find_in_array( pslr_jpeg_image_tone_str, sizeof(pslr_jpeg_image_tone_str)/sizeof(pslr_jpeg_image_tone_str[0]),str);
 }
 
-const char *get_pslr_jpeg_image_tone_str( pslr_jpeg_image_tone_t value ) {
+const char *pslr_get_jpeg_image_tone_str( pslr_jpeg_image_tone_t value ) {
     return get_pslr_str( pslr_jpeg_image_tone_str, sizeof(pslr_jpeg_image_tone_str)/sizeof(pslr_jpeg_image_tone_str[0]),value);
 }
 
-pslr_white_balance_mode_t get_pslr_white_balance_mode( char *str ) {
+pslr_white_balance_mode_t pslr_get_white_balance_mode( char *str ) {
     return find_in_array( pslr_white_balance_mode_str, sizeof(pslr_white_balance_mode_str)/sizeof(pslr_white_balance_mode_str[0]),str);
 }
 
-const char *get_pslr_white_balance_mode_str( pslr_white_balance_mode_t value ) {
+const char *pslr_get_white_balance_mode_str( pslr_white_balance_mode_t value ) {
     return get_pslr_str( pslr_white_balance_mode_str, sizeof(pslr_white_balance_mode_str)/sizeof(pslr_white_balance_mode_str[0]),value);
 }
 
-const char *get_pslr_custom_ev_steps_str( pslr_custom_ev_steps_t value ) {
+const char *pslr_get_custom_ev_steps_str( pslr_custom_ev_steps_t value ) {
     return get_pslr_str( pslr_custom_ev_steps_str, sizeof(pslr_custom_ev_steps_str)/sizeof(pslr_custom_ev_steps_str[0]),value);
 }
 
-const char *get_pslr_custom_sensitivity_steps_str( pslr_custom_sensitivity_steps_t value ) {
+const char *pslr_get_custom_sensitivity_steps_str( pslr_custom_sensitivity_steps_t value ) {
     return get_pslr_str( pslr_custom_sensitivity_steps_str, sizeof(pslr_custom_sensitivity_steps_str)/sizeof(pslr_custom_sensitivity_steps_str[0]),value);
 }
 
-const char *get_pslr_image_format_str( pslr_image_format_t value ) {
+const char *pslr_get_image_format_str( pslr_image_format_t value ) {
     return get_pslr_str( pslr_image_format_str, sizeof(pslr_image_format_str)/sizeof(pslr_image_format_str[0]),value);
 }
 
-const char *get_pslr_raw_format_str( pslr_raw_format_t value ) {
+const char *pslr_get_raw_format_str( pslr_raw_format_t value ) {
     return get_pslr_str( pslr_raw_format_str, sizeof(pslr_raw_format_str)/sizeof(pslr_raw_format_str[0]),value);
 }
 
-const char *get_pslr_scene_mode_str( pslr_scene_mode_t value ) {
+const char *pslr_get_scene_mode_str( pslr_scene_mode_t value ) {
     return get_pslr_str( pslr_scene_mode_str, sizeof(pslr_scene_mode_str)/sizeof(pslr_scene_mode_str[0]),value);
 }
