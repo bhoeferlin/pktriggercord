@@ -1,7 +1,7 @@
 /*
     pkTriggerCord
     Remote control of Pentax DSLR cameras.
-    Copyright (C) 2011-2018 Andras Salamon <andras.salamon@melda.info>
+    Copyright (C) 2011-2019 Andras Salamon <andras.salamon@melda.info>
 
     based on:
 
@@ -26,6 +26,14 @@
     and GNU Lesser General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#ifdef RAD10
+#include <windows.h>
+#include <utime.h>
+#include "tdbtimes.h"
+#else
+#include <sys/time.h>
+#include <unistd.h>
+#endif
 #ifndef WIN32
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -33,24 +41,20 @@
 #endif
 
 #include <stdio.h>
-#include <sys/time.h>
 #include <stdlib.h>
 
-#include <unistd.h>
-
+#include "pslr_log.h"
 #include "pslr.h"
 #include "pslr_lens.h"
+#include "pslr_utils.h"
+#include "pktriggercord-servermode.h"
 
-long int timeval_diff(struct timeval *t2, struct timeval *t1) {
-    return (t2->tv_usec + 1000000 * t2->tv_sec) - (t1->tv_usec + 1000000 * t1->tv_sec);
-}
-
-void camera_close(pslr_handle_t camhandle) {
+void pslr_camera_close(pslr_handle_t camhandle) {
     pslr_disconnect(camhandle);
     pslr_shutdown(camhandle);
 }
 
-pslr_handle_t camera_connect( char *model, char *device, int timeout, char *error_message ) {
+pslr_handle_t pslr_camera_connect( char *model, char *device, int timeout, char *error_message ) {
     struct timeval prev_time;
     struct timeval current_time;
     pslr_handle_t camhandle;
@@ -59,8 +63,8 @@ pslr_handle_t camera_connect( char *model, char *device, int timeout, char *erro
     gettimeofday(&prev_time, NULL);
     while (!(camhandle = pslr_init( model, device ))) {
         gettimeofday(&current_time, NULL);
-        DPRINT("diff: %f\n", timeval_diff(&current_time, &prev_time) / 1000000.0);
-        if ( timeout == 0 || timeout > timeval_diff(&current_time, &prev_time) / 1000000.0 ) {
+        DPRINT("diff: %f\n", timeval_diff_sec(&current_time, &prev_time));
+        if ( timeout == 0 || timeout > timeval_diff_sec(&current_time, &prev_time)) {
             DPRINT("sleep 1 sec\n");
             sleep_sec(1);
         } else {
@@ -87,15 +91,15 @@ pslr_handle_t camera_connect( char *model, char *device, int timeout, char *erro
 int client_sock;
 
 void write_socket_answer( char *answer ) {
-    ssize_t r = write(client_sock , answer , strlen(answer));
-    if (r != strlen(answer)) {
+    ssize_t r = write(client_sock, answer, strlen(answer));
+    if (r < 0 || (size_t)r != strlen(answer)) {
         fprintf(stderr, "write(answer) failed");
     }
 }
 
 void write_socket_answer_bin( uint8_t *answer, uint32_t length ) {
-    ssize_t r = write(client_sock , answer , length);
-    if (r != length) {
+    ssize_t r = write(client_sock, answer, length);
+    if (r < 0 || (size_t)r != length) {
         fprintf(stderr, "write(answer) failed");
     }
 
@@ -135,29 +139,30 @@ void strip(char *s) {
 }
 
 int servermode_socket(int servermode_timeout) {
-    int socket_desc, c , read_size;
-    struct sockaddr_in server , client;
+    int socket_desc, c, read_size;
+    struct sockaddr_in server, client;
     char client_message[2000];
     char *arg;
     char buf[2100];
     pslr_handle_t camhandle=NULL;
     pslr_status status;
+    pslr_buffer_type buffer_type=PSLR_BUF_DNG;
     char C;
-    float F = 0;
     pslr_rational_t shutter_speed = {0, 0};
+    pslr_rational_t aperture = {0, 0};
     uint32_t iso = 0;
     uint32_t auto_iso_min = 0;
     uint32_t auto_iso_max = 0;
 
     //Create socket
-    socket_desc = socket(AF_INET , SOCK_STREAM , 0);
+    socket_desc = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_desc == -1) {
-        fprintf(stderr, "Could not create socket");
+        pslr_write_log(PSLR_ERROR, "Could not create socket");
     }
 
     int enable = 1;
     if (setsockopt(socket_desc, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
-        fprintf(stderr, "setsockopt(SO_REUSEADDR) failed");
+        pslr_write_log(PSLR_ERROR, "setsockopt(SO_REUSEADDR) failed");
     }
     DPRINT("Socket created\n");
 
@@ -167,14 +172,14 @@ int servermode_socket(int servermode_timeout) {
     server.sin_port = htons( 8888 );
 
     //Bind
-    if ( bind(socket_desc,(struct sockaddr *)&server , sizeof(server)) < 0) {
-        fprintf(stderr, "bind failed. Error");
+    if ( bind(socket_desc,(struct sockaddr *)&server, sizeof(server)) < 0) {
+        pslr_write_log(PSLR_ERROR, "bind failed. Error");
         return 1;
     }
     DPRINT("bind done\n");
 
     //Listen
-    listen(socket_desc , 3);
+    listen(socket_desc, 3);
 
     //Accept and incoming connection
     DPRINT("Waiting for incoming connections...\n");
@@ -196,7 +201,7 @@ int servermode_socket(int servermode_timeout) {
         } else if (retval) {
             client_sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&c);
             if (client_sock < 0) {
-                fprintf(stderr, "accept failed");
+                pslr_write_log(PSLR_ERROR, "accept failed");
                 return 1;
             }
             DPRINT("Connection accepted\n");
@@ -207,19 +212,19 @@ int servermode_socket(int servermode_timeout) {
         }
 
         //Receive a message from client
-        while ( (read_size = recv(client_sock , client_message , 2000 , 0)) > 0 ) {
+        while ( (read_size = recv(client_sock, client_message, 2000, 0)) > 0 ) {
             client_message[read_size]='\0';
             strip( client_message );
             DPRINT(":%s:\n",client_message);
             if ( !strcmp(client_message, "stopserver" ) ) {
                 if ( camhandle ) {
-                    camera_close(camhandle);
+                    pslr_camera_close(camhandle);
                 }
                 write_socket_answer("0\n");
                 exit(0);
             } else if ( !strcmp(client_message, "disconnect" ) ) {
                 if ( camhandle ) {
-                    camera_close(camhandle);
+                    pslr_camera_close(camhandle);
                 }
                 write_socket_answer("0\n");
             } else if ( (arg = is_string_prefix( client_message, "echo")) != NULL ) {
@@ -232,7 +237,7 @@ int servermode_socket(int servermode_timeout) {
             } else if ( !strcmp(client_message, "connect") ) {
                 if ( camhandle ) {
                     write_socket_answer("0\n");
-                } else if ( (camhandle = camera_connect( NULL, NULL, -1, buf ))  ) {
+                } else if ( (camhandle = pslr_camera_connect( NULL, NULL, -1, buf ))  ) {
                     write_socket_answer("0\n");
                 } else {
                     write_socket_answer(buf);
@@ -248,12 +253,12 @@ int servermode_socket(int servermode_timeout) {
                 }
             } else if ( !strcmp(client_message, "get_camera_name") ) {
                 if ( check_camera(camhandle) ) {
-                    sprintf(buf, "%d %s\n", 0, pslr_camera_name(camhandle));
+                    sprintf(buf, "%d %s\n", 0, pslr_get_camera_name(camhandle));
                     write_socket_answer(buf);
                 }
-            } else if ( !strcmp(client_message, "get_lens_name") ) {
+            } else if ( !strcmp(client_message, "pslr_get_lens_name") ) {
                 if ( check_camera(camhandle) ) {
-                    sprintf(buf, "%d %s\n", 0, get_lens_name(status.lens_id1, status.lens_id2));
+                    sprintf(buf, "%d %s\n", 0, pslr_get_lens_name(status.lens_id1, status.lens_id2));
                     write_socket_answer(buf);
                 }
             } else if ( !strcmp(client_message, "get_current_shutter_speed") ) {
@@ -263,7 +268,7 @@ int servermode_socket(int servermode_timeout) {
                 }
             } else if ( !strcmp(client_message, "get_current_aperture") ) {
                 if ( check_camera(camhandle) ) {
-                    sprintf(buf, "%d %s\n", 0, format_rational( status.current_aperture, "%.1f"));
+                    sprintf(buf, "%d %s\n", 0, pslr_format_rational( status.current_aperture, "%.1f"));
                     write_socket_answer(buf);
                 }
             } else if ( !strcmp(client_message, "get_current_iso") ) {
@@ -319,11 +324,20 @@ int servermode_socket(int servermode_timeout) {
                         write_socket_answer_bin(pImage, imageSize);
                     }
                 }
+            } else if (  (arg = is_string_prefix( client_message, "get_buffer_type")) != NULL ) {
+                if ( buffer_type == PSLR_BUF_PEF ) {
+                    sprintf(buf,"0 PEF\n");
+                } else if ( buffer_type == PSLR_BUF_DNG ) {
+                    sprintf(buf,"0 DNG\n");
+                } else {
+                    sprintf(buf,"1 Invalid buffer type.\n");
+                }
+                write_socket_answer(buf);
             } else if (  (arg = is_string_prefix( client_message, "get_buffer")) != NULL ) {
                 int bufno = atoi(arg);
                 if ( check_camera(camhandle) ) {
                     uint32_t imageSize;
-                    if ( pslr_buffer_open(camhandle, bufno, PSLR_BUF_DNG, 0) ) {
+                    if ( pslr_buffer_open(camhandle, bufno, buffer_type, 0) ) {
                         sprintf(buf, "%d\n", 1);
                         write_socket_answer(buf);
                     } else {
@@ -344,28 +358,36 @@ int servermode_socket(int servermode_timeout) {
                         pslr_buffer_close(camhandle);
                     }
                 }
+            } else if (  (arg = is_string_prefix( client_message, "set_buffer_type")) != NULL ) {
+                if ( !strcmp(arg, "PEF") ) {
+                    buffer_type = PSLR_BUF_PEF;
+                    sprintf(buf,"0 PEF\n");
+                } else if ( !strcmp(arg, "DNG") ) {
+                    buffer_type = PSLR_BUF_DNG;
+                    sprintf(buf,"0 DNG\n");
+                } else {
+                    sprintf(buf,"1 Invalid buffer type (must be PEF or DNG).\n");
+                }
+                write_socket_answer(buf);
             } else if (  (arg = is_string_prefix( client_message, "set_shutter_speed")) != NULL ) {
                 if ( check_camera(camhandle) ) {
-                    // TODO: merge with pktriggercord-cli shutter speed parse
-                    if (sscanf(arg, "1/%d%c", &shutter_speed.denom, &C) == 1) {
-                        shutter_speed.nom = 1;
-                        sprintf(buf, "%d %d %d\n", 0, shutter_speed.nom, shutter_speed.denom);
-                    } else if ((sscanf(arg, "%f%c", &F, &C)) == 1) {
-                        if (F < 2) {
-                            F = F * 10;
-                            shutter_speed.denom = 10;
-                            shutter_speed.nom = F;
-                        } else {
-                            shutter_speed.denom = 1;
-                            shutter_speed.nom = F;
-                        }
-                        sprintf(buf, "%d %d %d\n", 0, shutter_speed.nom, shutter_speed.denom);
-                    } else {
-                        shutter_speed.nom = 0;
+                    shutter_speed = parse_shutter_speed(arg);
+                    if (shutter_speed.nom == 0) {
                         sprintf(buf,"1 Invalid shutter speed value.\n");
-                    }
-                    if (shutter_speed.nom) {
+                    } else {
+                        sprintf(buf, "%d %d %d\n", 0, shutter_speed.nom, shutter_speed.denom);
                         pslr_set_shutter(camhandle, shutter_speed);
+                    }
+                    write_socket_answer(buf);
+                }
+            } else if (  (arg = is_string_prefix( client_message, "set_aperture")) != NULL ) {
+                if ( check_camera(camhandle) ) {
+                    aperture = parse_aperture(arg);
+                    if (aperture.nom == 0) {
+                        sprintf(buf,"1 Invalid aperture value.\n");
+                    } else {
+                        pslr_set_aperture(camhandle, aperture);
+                        sprintf(buf, "%d %.1f\n", 0, aperture.nom / 10.0);
                     }
                     write_socket_answer(buf);
                 }
@@ -396,7 +418,7 @@ int servermode_socket(int servermode_timeout) {
             DPRINT("Client disconnected\n");
             fflush(stdout);
         } else if (read_size == -1) {
-            fprintf(stderr, "recv failed\n");
+            pslr_write_log(PSLR_ERROR, "recv failed\n");
         }
     }
     return 0;

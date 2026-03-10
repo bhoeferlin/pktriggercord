@@ -1,6 +1,6 @@
 /*
     pkTriggerCord
-    Copyright (C) 2011-2018 Andras Salamon <andras.salamon@melda.info>
+    Copyright (C) 2011-2019 Andras Salamon <andras.salamon@melda.info>
     Remote control of Pentax DSLR cameras.
 
     based on:
@@ -36,9 +36,12 @@
 #endif
 #include <unistd.h>
 #include <dirent.h>
-#include "pslr_model.h"
 
+#include "pslr_log.h"
+#include "pslr_model.h"
 #include "pslr_scsi.h"
+
+static const int MAX_DEVICE_NUM = 256;
 
 void print_scsi_error(sg_io_hdr_t *pIo, uint8_t *sense_buffer) {
     int k;
@@ -65,21 +68,22 @@ void print_scsi_error(sg_io_hdr_t *pIo, uint8_t *sense_buffer) {
 }
 
 const char* device_dirs[2] = {"/sys/class/scsi_generic", "/sys/block"};
+const int device_dir_num = sizeof(device_dirs)/sizeof(device_dirs[0]);
 
-char **get_drives(int *driveNum) {
+char **get_drives(int *drive_num) {
     DIR *d;
     struct dirent *ent;
-    char *tmp[256];
+    char *tmp[MAX_DEVICE_NUM];
     char **ret=NULL;
     int j=0,jj;
     int di;
-    for (di=0; di<sizeof(device_dirs)/sizeof(device_dirs[0]); ++di) {
+
+    for (di=0; di<device_dir_num; ++di) {
         d = opendir(device_dirs[di]);
         if (d) {
             while ( (ent = readdir(d)) ) {
-                if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
-                    tmp[j] = malloc( strlen(ent->d_name)+1 );
-                    strncpy(tmp[j], ent->d_name, strlen(ent->d_name)+1);
+                if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0 && strncmp(ent->d_name, "loop",4) != 0) {
+                    tmp[j] = strdup( ent->d_name );
                     ++j;
                 }
             }
@@ -88,66 +92,86 @@ char **get_drives(int *driveNum) {
             DPRINT("Cannot open %s\n", device_dirs[di]);
         }
     }
-    *driveNum = j;
+    *drive_num = j;
     if (j>0) {
         ret = malloc( j * sizeof(char*) );
         for ( jj=0; jj<j; ++jj ) {
-            ret[jj] = malloc( strlen(tmp[jj])+1 );
-            strncpy( ret[jj], tmp[jj], strlen(tmp[jj]) );
-            ret[jj][strlen(tmp[jj])]='\0';
+            ret[jj] = tmp[jj];
         }
     }
     return ret;
 }
 
-pslr_result get_drive_info(char* driveName, int* hDevice,
-                           char* vendorId, int vendorIdSizeMax,
-                           char* productId, int productIdSizeMax) {
-    char nmbuf[256];
-    int fd;
+pslr_result get_drive_info_property(const char *drive_name, char *id, int id_size_max, char *property_name) {
+    char file_name[256];
+    int fd = -1;
 
-    vendorId[0] = '\0';
-    productId[0] = '\0';
-    snprintf(nmbuf, sizeof (nmbuf), "/sys/class/scsi_generic/%s/device/vendor", driveName);
-    fd = open(nmbuf, O_RDONLY);
-    if (fd == -1) {
-        snprintf(nmbuf, sizeof (nmbuf), "/sys/block/%s/device/vendor", driveName);
-        fd = open(nmbuf, O_RDONLY);
+    DPRINT("Looking for %s\n", property_name);
+    int di = 0;
+    while (fd == -1 && di < device_dir_num) {
+        snprintf(file_name, sizeof(file_name), "%s/%s/device/%s", device_dirs[di], drive_name, property_name);
+        fd = open(file_name, O_RDONLY);
         if (fd == -1) {
-            return PSLR_DEVICE_ERROR;
+            DPRINT("Cannot open %s\n", file_name);
         }
+        ++di;
     }
-    int v_length = read(fd, vendorId, vendorIdSizeMax-1);
-    vendorId[v_length]='\0';
-    close(fd);
-
-    snprintf(nmbuf, sizeof (nmbuf), "/sys/class/scsi_generic/%s/device/model", driveName);
-    fd = open(nmbuf, O_RDONLY);
     if (fd == -1) {
-        snprintf(nmbuf, sizeof (nmbuf), "/sys/block/%s/device/model", driveName);
-        fd = open(nmbuf, O_RDONLY);
-        if (fd == -1) {
-            return PSLR_DEVICE_ERROR;
-        }
+        return PSLR_DEVICE_ERROR;
+    } else {
+        int v_length = read(fd, id, id_size_max - 1);
+        id[v_length] = '\0';
+        DPRINT("%s: %s\n", property_name, id);
+        close(fd);
+        return PSLR_OK;
     }
-    int p_length = read(fd, productId, productIdSizeMax-1);
-    productId[p_length]='\0';
-    close(fd);
+}
 
-    snprintf(nmbuf, sizeof (nmbuf), "/dev/%s", driveName);
-    *hDevice = open(nmbuf, O_RDWR);
-    if ( *hDevice == -1) {
-        snprintf(nmbuf, sizeof (nmbuf), "/dev/block/%s", driveName);
-        *hDevice = open(nmbuf, O_RDWR);
-        if ( *hDevice == -1 ) {
+pslr_result get_drive_info_vendor(const char *drive_name, char *vendor_id, int vendor_id_size_max) {
+    return get_drive_info_property(drive_name, vendor_id, vendor_id_size_max, "vendor");
+}
+
+pslr_result get_drive_info_model(const char *drive_name, char *product_id, int product_id_size_max) {
+    return get_drive_info_property(drive_name, product_id, product_id_size_max, "model");
+}
+
+pslr_result get_drive_info_device(const char *drive_name, int* device) {
+    char file_name[256];
+
+    DPRINT("Looking for device file %s\n", drive_name);
+    snprintf(file_name, sizeof (file_name), "/dev/%s", drive_name);
+    *device = open(file_name, O_RDWR);
+    if ( *device == -1) {
+        DPRINT("Cannot open %s\n", file_name);
+        snprintf(file_name, sizeof (file_name), "/dev/block/%s", drive_name);
+        *device = open(file_name, O_RDWR);
+        if ( *device == -1 ) {
+            DPRINT("Cannot open %s\n", file_name);
             return PSLR_DEVICE_ERROR;
         }
     }
     return PSLR_OK;
 }
 
-void close_drive(int *hDevice) {
-    close( *hDevice );
+pslr_result get_drive_info(char* drive_name, int* device,
+                           char* vendor_id, int vendor_id_size_max,
+                           char* product_id, int product_id_size_max) {
+    DPRINT("Getting drive info for %s\n", drive_name);
+    vendor_id[0] = '\0';
+    product_id[0] = '\0';
+    pslr_result result;
+    result = get_drive_info_vendor(drive_name, vendor_id, vendor_id_size_max);
+    if (result == PSLR_OK) {
+        result = get_drive_info_model(drive_name, product_id, product_id_size_max);
+    }
+    if (result == PSLR_OK) {
+        result = get_drive_info_device(drive_name, device);
+    }
+    return result;
+}
+
+void close_drive(int *device) {
+    close( *device );
 }
 
 int scsi_read(int sg_fd, uint8_t *cmd, uint32_t cmdLen,
@@ -155,7 +179,7 @@ int scsi_read(int sg_fd, uint8_t *cmd, uint32_t cmdLen,
     sg_io_hdr_t io;
     uint8_t sense[32];
     int r;
-    int i;
+    uint32_t i;
 
     memset(&io, 0, sizeof (io));
 
@@ -211,7 +235,7 @@ int scsi_read(int sg_fd, uint8_t *cmd, uint32_t cmdLen,
 
         /* Older Pentax DSLR will report all bytes remaining, so make
          * a special case for this (treat it as all bytes read). */
-        if (io.resid == bufLen) {
+        if ((uint32_t)io.resid == bufLen) {
             return bufLen;
         } else {
             return bufLen - io.resid;
@@ -225,7 +249,7 @@ int scsi_write(int sg_fd, uint8_t *cmd, uint32_t cmdLen,
     sg_io_hdr_t io;
     uint8_t sense[32];
     int r;
-    int i;
+    uint32_t i;
 
     memset(&io, 0, sizeof (io));
 
@@ -243,7 +267,7 @@ int scsi_write(int sg_fd, uint8_t *cmd, uint32_t cmdLen,
     /* io.pack_id = 0; */
     /* io.usr_ptr = NULL; */
 
-    //  print debug scsi cmd
+    /*  print debug scsi cmd */
     DPRINT("[S]\t\t\t\t\t >>> [");
     for (i = 0; i < cmdLen; ++i) {
         if (i > 0) {
@@ -256,7 +280,7 @@ int scsi_write(int sg_fd, uint8_t *cmd, uint32_t cmdLen,
     }
     DPRINT("]\n");
     if (bufLen > 0) {
-        //  print debug write buffer
+        /*  print debug write buffer */
         DPRINT("[S]\t\t\t\t\t >>> [");
         for (i = 0; i < 32 && i < bufLen; ++i) {
             if (i > 0) {

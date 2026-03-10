@@ -1,15 +1,25 @@
+JSONDIR=src/external/js0n
+
 PREFIX ?= /usr/local
-CFLAGS ?= -O3 -g -Wall
+PKTDATADIR = $(PREFIX)/share/pktriggercord
+CFLAGS ?= -O3 -g -Wall -I$(JSONDIR)
 # -Wextra
 LDFLAGS ?= -lm
 
 MANDIR = $(PREFIX)/share/man
 MAN1DIR = $(MANDIR)/man1
 
-LIN_CFLAGS = $(CFLAGS)
-LIN_LDFLAGS = $(LDFLAGS)
+LOCAL_CFLAGS = $(CFLAGS)
+LOCAL_LDFLAGS = $(LDFLAGS)
 
-VERSION=0.84.05
+CLI_CFLAGS=$(LOCAL_CFLAGS)
+CLI_LDFLAGS=$(LOCAL_LDFLAGS)
+
+GUI_CFLAGS=$(LOCAL_CFLAGS) $(shell pkg-config --cflags gtk+-2.0 gmodule-2.0) -DGTK_DISABLE_SINGLE_INCLUDES -DGSEAL_ENABLE
+#-DGDK_DISABLE_DEPRECATED -DGTK_DISABLE_DEPRECATED
+GUI_LDFLAGS=$(LOCAL_LDFLAGS) $(shell pkg-config --libs gtk+-2.0 gmodule-2.0)
+
+VERSION=0.85.01
 VERSIONCODE=$(shell echo $(VERSION) | sed s/\\.//g | sed s/^0// )
 # variables for RPM creation
 TOPDIR=$(HOME)/rpmbuild
@@ -21,7 +31,7 @@ DEBFULLNAME="Andras Salamon"
 
 # variables for RPM/DEB creation
 DESTDIR ?=
-ARCH=$(shell uname -m)
+ARCH ?= $(shell uname -m)
 
 #variables for Android
 ANDROID=android
@@ -29,25 +39,48 @@ ANDROID_DIR = android
 ANDROID_PROJECT_NAME = PkTriggerCord
 ANDROID_PACKAGE = info.melda.sala.pktriggercord
 APK_FILE = $(PROJECT_NAME)-debug.apk
-ifndef ANDROID_NDK_HOME
-NDK_BUILD=ndk-build
-else
-NDK_BUILD = $(ANDROID_NDK_HOME)/ndk-build
+
+CLI_TARGET=pktriggercord-cli
+GUI_TARGET=pktriggercord
+
+#variables modification for Windows cross compilation
+ifeq ($(ARCH),Win32)
+	CC=i686-w64-mingw32-gcc
+	AR=i686-w64-mingw32-ar
+
+	LOCAL_CFLAGS+= -mms-bitfields
+
+	GUI_CFLAGS=$(LOCAL_CFLAGS) \
+		-I$(LOCALMINGW)/include/gtk-2.0/ \
+		-I$(LOCALMINGW)/lib/gtk-2.0/include/ \
+		-I$(LOCALMINGW)/include/atk-1.0/ \
+		-I$(LOCALMINGW)/include/cairo/ \
+		-I$(LOCALMINGW)/include/gdk-pixbuf-2.0/ \
+		-I$(LOCALMINGW)/include/pango-1.0/ \
+		-I$(LOCALMINGW)/include/glib-2.0 \
+		-I$(LOCALMINGW)/lib/glib-2.0/include
+	GUI_LDFLAGS=-L$(LOCALMINGW)/lib -lgtk-win32-2.0 -lgdk-win32-2.0 -lgdk_pixbuf-2.0 -lgobject-2.0 -lglib-2.0 -lgio-2.0
+
+	#some build of MinGW enforce this. Some doesn't. Ensure consistent behaviour
+	CLI_LDFLAGS+= -Wl,--force-exe-suffix
+	GUI_LDFLAGS+= -Wl,--force-exe-suffix
+
+	CLI_TARGET=pktriggercord-cli.exe
+	GUI_TARGET=pktriggercord.exe
 endif
 
-LIN_GUI_LDFLAGS=$(shell pkg-config --libs gtk+-2.0 gmodule-2.0)
-LIN_GUI_CFLAGS=$(CFLAGS) $(shell pkg-config --cflags gtk+-2.0 gmodule-2.0) -DGTK_DISABLE_SINGLE_INCLUDES -DGSEAL_ENABLE
-#-DGDK_DISABLE_DEPRECATED -DGTK_DISABLE_DEPRECATED
-
-default: cli pktriggercord
+default: cli gui
+ifneq ($(ARCH),Win32)
 all: srczip rpm win pktriggercord_commandline.html
-cli: pktriggercord-cli
+endif
+cli: $(CLI_TARGET)
+gui: $(GUI_TARGET)
 
 MANS = pktriggercord-cli.1 pktriggercord.1
-SRCOBJNAMES = pslr pslr_enum pslr_scsi pslr_lens pslr_model pktriggercord-servermode
-OBJS = $(SRCOBJNAMES:=.o)
+SRCOBJNAMES = pslr pslr_enum pslr_scsi pslr_log pslr_lens pslr_model pktriggercord-servermode pslr_utils
+OBJS = $(SRCOBJNAMES:=.o) $(JSONDIR)/js0n.o
 WIN_DLLS_DIR=win_dlls
-SOURCE_PACKAGE_FILES = Makefile Changelog COPYING INSTALL BUGS $(MANS) pentax_scsi_protocol.md pentax.rules samsung.rules $(SRCOBJNAMES:=.h) $(SRCOBJNAMES:=.c) pslr_scsi_linux.c pslr_scsi_win.c pslr_scsi_openbsd.c exiftool_pentax_lens.txt pktriggercord.c pktriggercord-cli.c pktriggercord.ui $(SPECFILE) android_scsi_sg.h
+SOURCE_PACKAGE_FILES = Makefile Changelog COPYING INSTALL BUGS $(MANS) pentax_scsi_protocol.md pentax.rules samsung.rules $(SRCOBJNAMES:=.h) $(SRCOBJNAMES:=.c) pslr_scsi_linux.c pslr_scsi_win.c pslr_scsi_openbsd.c exiftool_pentax_lens.txt pktriggercord.c pktriggercord-cli.c pktriggercord.ui pentax_settings.json $(SPECFILE) android_scsi_sg.h rad10/ src/
 TARDIR = pktriggercord-$(VERSION)
 SRCZIP = pkTriggerCord-$(VERSION).src.tar.gz
 
@@ -55,19 +88,52 @@ LOCALMINGW=i686-w64-mingw32
 WINGCC=i686-w64-mingw32-gcc
 WINMINGW=/usr/i686-w64-mingw32/sys-root/mingw
 WINDIR=$(TARDIR)-win
+GTK_BUNDLE=gtk+-bundle_2.24.10-20120208_win32.zip
+
+# List of all the dll required to run the GUI on Windows
+GUI_WIN_DLLS = \
+	$(LOCALMINGW)/bin/freetype6.dll \
+	$(LOCALMINGW)/bin/libfontconfig-1.dll \
+	$(LOCALMINGW)/bin/libgdk-win32-2.0-0.dll \
+	$(LOCALMINGW)/bin/libgtk-win32-2.0-0.dll \
+	$(LOCALMINGW)/bin/libgdk_pixbuf-2.0-0.dll \
+	$(LOCALMINGW)/bin/libgthread-2.0-0.dll \
+	$(LOCALMINGW)/bin/libpng14-14.dll \
+	$(LOCALMINGW)/bin/libgio-2.0-0.dll \
+	$(LOCALMINGW)/bin/libglib-2.0-0.dll \
+	$(LOCALMINGW)/bin/libgmodule-2.0-0.dll \
+	$(LOCALMINGW)/bin/libgobject-2.0-0.dll \
+	$(LOCALMINGW)/bin/libpango-1.0-0.dll \
+	$(LOCALMINGW)/bin/libpangowin32-1.0-0.dll \
+	$(LOCALMINGW)/bin/libpangocairo-1.0-0.dll \
+	$(LOCALMINGW)/bin/libpangoft2-1.0-0.dll \
+	$(LOCALMINGW)/bin/libcairo-2.dll \
+	$(LOCALMINGW)/bin/libatk-1.0-0.dll \
+	$(LOCALMINGW)/bin/zlib1.dll \
+	$(LOCALMINGW)/bin/intl.dll \
+	$(LOCALMINGW)/bin/libexpat-1.dll
 
 pslr.o: pslr_enum.o pslr_scsi.o pslr.c pslr.h
 
-pktriggercord-cli: pktriggercord-cli.c $(OBJS)
-	$(CC) $(LIN_CFLAGS) $^ -DVERSION='"$(VERSION)"' -o $@ $(LIN_LDFLAGS) -L.
+$(CLI_TARGET): pktriggercord-cli.c $(OBJS)
+	$(CC) $(CLI_CFLAGS) $^ -DVERSION='"$(VERSION)"' -o $@ $(CLI_LDFLAGS) -L.
 
 pslr_scsi.o: pslr_scsi_win.c pslr_scsi_linux.c pslr_scsi_openbsd.c
 
-%.o : %.c %.h
-	$(CC) $(LIN_CFLAGS) -fPIC -c $<
+$(JSONDIR)/js0n.o: $(JSONDIR)/js0n.c $(JSONDIR)/js0n.h
+	$(CC) $(LOCAL_CFLAGS) -fPIC -c $< -o $@
 
-pktriggercord: pktriggercord.c $(OBJS)
-	$(CC) $(LIN_GUI_CFLAGS) -DVERSION='"$(VERSION)"' -DDATADIR=\"$(PREFIX)/share/pktriggercord\" $^ $(LIN_LDFLAGS) -o $@ $(LIN_GUI_LDFLAGS) -L.
+EXTERNAL=$(JSONDIR)/js0n.o
+
+%.o: %.c %.h $(EXTERNAL)
+	$(CC) $(LOCAL_CFLAGS) -DPKTDATADIR=\"$(PKTDATADIR)\" -fPIC -c $< -o $@
+
+ifeq ($(ARCH),Win32)
+$(GUI_TARGET): $(LOCALMINGW)/include $(LOCALMINGW)/lib
+endif
+
+$(GUI_TARGET): pktriggercord.c $(OBJS)
+	$(CC) $(GUI_CFLAGS) -DVERSION='"$(VERSION)"' -DPKTDATADIR=\"$(PKTDATADIR)\" pktriggercord.c $(OBJS) -o $@ $(GUI_LDFLAGS) -L.
 
 install: pktriggercord-cli pktriggercord
 	install -d $(DESTDIR)/$(PREFIX)/bin
@@ -86,10 +152,11 @@ install: pktriggercord-cli pktriggercord
 	(which setcap && setcap CAP_SYS_RAWIO+eip $(DESTDIR)/$(PREFIX)/bin/pktriggercord) || true; \
 	install -d $(DESTDIR)/$(PREFIX)/share/pktriggercord/; \
 	install -m 0644 pktriggercord.ui $(DESTDIR)/$(PREFIX)/share/pktriggercord/ ; \
+	install -m 0644 pentax_settings.json $(DESTDIR)/$(PREFIX)/share/pktriggercord/ ; \
 	fi
 
 clean:
-	rm -f pktriggercord pktriggercord-cli *.o
+	rm -f pktriggercord pktriggercord-cli *.o $(JSONDIR)/*.o
 	rm -f pktriggercord.exe pktriggercord-cli.exe
 	rm -f *.orig
 
@@ -151,7 +218,7 @@ deb: srczip
 # Remote deb creation on Raspberry PI
 # address, dir hardwired
 remotedeb:
-	ssh pi@raspberrypi "rm -rf /tmp/pktriggercord && cd /tmp && git clone --depth 1 https://github.com/asalamon74/pktriggercord.git && cd pktriggercord && make clean deb"
+	git ls-files | tar Tzcf - - | ssh pi@raspberrypi "rm -rf /tmp/pktriggercord && cd /tmp && mkdir pktriggercord && tar xzfv - -C pktriggercord && cd pktriggercord && make clean deb"
 	scp pi@raspberrypi:/tmp/pktriggercord/pktriggercord_*.deb .
 
 
@@ -165,78 +232,51 @@ pktriggercord_commandline.html: pktriggercord-cli.1
 	cat $< | sed s/\\\\-/-/g | groff -man -Thtml -mwww -P "-lr" > $@
 
 # Windows cross-compile
-windownload:
+$(LOCALMINGW)/download: $(LOCALMINGW)/download/$(GTK_BUNDLE)
+
+$(LOCALMINGW)/download/$(GTK_BUNDLE):
 	mkdir -p $(LOCALMINGW)/download
-	wget -N http://ftp.gnome.org/pub/gnome/binaries/win32/gtk+/2.24/gtk+_2.24.10-1_win32.zip -P $(LOCALMINGW)/download
-	wget -N http://ftp.gnome.org/pub/gnome/binaries/win32/gtk+/2.24/gtk+-dev_2.24.10-1_win32.zip -P $(LOCALMINGW)/download
-	wget -N http://ftp.gnome.org/pub/gnome/binaries/win32/glib/2.28/glib-dev_2.28.8-1_win32.zip -P $(LOCALMINGW)/download
-	wget -N http://ftp.gnome.org/pub/gnome/binaries/win32/atk/1.32/atk-dev_1.32.0-2_win32.zip -P $(LOCALMINGW)/download
-	wget -N http://ftp.gnome.org/pub/gnome/binaries/win32/pango/1.29/pango-dev_1.29.4-1_win32.zip -P $(LOCALMINGW)/download
-	wget -N http://ftp.gnome.org/pub/gnome/binaries/win32/gdk-pixbuf/2.24/gdk-pixbuf-dev_2.24.0-1_win32.zip -P $(LOCALMINGW)/download
-	wget -N http://ftp.gnome.org/pub/gnome/binaries/win32/gdk-pixbuf/2.24/gdk-pixbuf_2.24.0-1_win32.zip -P $(LOCALMINGW)/download
-	wget -N http://ftp.gnome.org/pub/gnome/binaries/win32/dependencies/cairo-dev_1.10.2-2_win32.zip -P $(LOCALMINGW)/download
-	unzip -o $(LOCALMINGW)/download/gtk+_2.24.10-1_win32.zip -d $(LOCALMINGW)
-	unzip -o $(LOCALMINGW)/download/gtk+-dev_2.24.10-1_win32.zip -d $(LOCALMINGW)
-	unzip -o $(LOCALMINGW)/download/glib-dev_2.28.8-1_win32.zip -d $(LOCALMINGW)
-	unzip -o $(LOCALMINGW)/download/atk-dev_1.32.0-2_win32.zip -d $(LOCALMINGW)
-	unzip -o $(LOCALMINGW)/download/pango-dev_1.29.4-1_win32.zip -d $(LOCALMINGW)
-	unzip -o $(LOCALMINGW)/download/gdk-pixbuf-dev_2.24.0-1_win32.zip -d $(LOCALMINGW)
-	unzip -o $(LOCALMINGW)/download/gdk-pixbuf_2.24.0-1_win32.zip -d $(LOCALMINGW)
-	unzip -o $(LOCALMINGW)/download/cairo-dev_1.10.2-2_win32.zip -d $(LOCALMINGW)
-	wget -N https://downloads.sourceforge.net/project/mingw-w64/Toolchains%20targetting%20Win32/Personal%20Builds/rubenvb/gcc-4.7-release/i686-w64-mingw32-gcc-4.7.4-release-linux64_rubenvb.tar.xz -P $(LOCALMINGW)/download
-	tar xJf $(LOCALMINGW)/download/i686-w64-mingw32-gcc-4.7.4-release-linux64_rubenvb.tar.xz -C $(LOCALMINGW)
+	wget --no-check-certificate -N http://ftp.gnome.org/pub/gnome/binaries/win32/gtk+/2.24/$(GTK_BUNDLE) -P $(LOCALMINGW)/download
 
-localwin: WINMINGW=$(LOCALMINGW)
-localwin: WINGCC=$(LOCALMINGW)/mingw32/bin/i686-w64-mingw32-gcc
+$(LOCALMINGW)/include $(LOCALMINGW)/lib: $(LOCALMINGW)/download
+	unzip -o $(LOCALMINGW)/download/$(GTK_BUNDLE) -d $(LOCALMINGW) $(@:$(LOCALMINGW)/%=%)/**
 
-winobjs:$(SRCOBJNAMES:=.c) 
-	$(foreach srcfile, $(SRCOBJNAMES:=.c), $(WINGCC) $(WIN_CFLAGS) -c $(srcfile);)
+# Extract all the required dlls at once with a grouped target
+$(GUI_WIN_DLLS) &: $(LOCALMINGW)/download
+	unzip -o $(LOCALMINGW)/download/$(GTK_BUNDLE) -d $(LOCALMINGW) $(GUI_WIN_DLLS:$(LOCALMINGW)/%=%)
+	touch -r $^ $(GUI_WIN_DLLS)
 
-win-cli:winobjs pktriggercord-cli.c pktriggercord_commandline.html
-	$(WINGCC) -mms-bitfields -DVERSION='"$(VERSION)"'  pktriggercord-cli.c $(OBJS) -o pktriggercord-cli.exe $(WIN_CFLAGS) -L.
+ifeq ($(ARCH),Win32)
+dist: pktriggercord_commandline.html $(GUI_WIN_DLLS) $(CLI_TARGET) $(GUI_TARGET)
+	rm -rf $(WINDIR)
 	mkdir -p $(WINDIR)
-	cp pktriggercord-cli.exe Changelog COPYING pktriggercord_commandline.html $(WINDIR)
-	cp $(WIN_DLLS_DIR)/*.dll $(WINDIR)
-
-win-gui: winobjs
-	$(WINGCC) -mms-bitfields -DVERSION='"$(VERSION)"' -DDATADIR=\".\" pktriggercord.c $(OBJS) -o pktriggercord.exe $(WIN_GUI_CFLAGS) $(WIN_LDFLAGS) -L.
-	mkdir -p $(WINDIR)
-	cp pktriggercord.exe pktriggercord.ui Changelog COPYING $(WINDIR)
-	cp $(WIN_DLLS_DIR)/*.dll $(WINDIR)
-
-win: win-cli win-gui
+	cp $^ $(WINDIR)
+	cp Changelog COPYING pktriggercord.ui pentax_settings.json $(WINDIR)
 	rm -f $(WINDIR).zip
 	zip -rj $(WINDIR).zip $(WINDIR)
 	rm -r $(WINDIR)
-
-localwin: windownload win
-
-androidcli:
-	VERSION=$(VERSION) NDK_PROJECT_PATH=$(ANDROID_DIR) NDK_DEBUG=1 $(NDK_BUILD)
+else
+dist: rpm
+endif
 
 androidclean:
-	VERSION=$(VERSION) NDK_PROJECT_PATH=$(ANDROID_DIR) NDK_DEBUG=1 $(NDK_BUILD) clean
 	cd $(ANDROID_DIR) && ./gradlew clean
 
 androidver:
-	sed -i s/android:versionName=\".*\"/android:versionName=\"$(VERSION)\"/ $(ANDROID_DIR)/AndroidManifest.xml
-	sed -i s/android:versionCode=\".*\"/android:versionCode=\"$(VERSIONCODE)\"/ $(ANDROID_DIR)/AndroidManifest.xml
 	sed -i s/versionName\ \".*\"/versionName\ \"$(VERSION)\"/ $(ANDROID_DIR)/build.gradle
 	sed -i s/versionCode\ .*/versionCode\ $(VERSIONCODE)/ $(ANDROID_DIR)/build.gradle
 
-androidcommon: androidcli androidver
-	mkdir -p $(ANDROID_DIR)/assets
-	cp $(ANDROID_DIR)/libs/armeabi/pktriggercord-cli $(ANDROID_DIR)/assets
-
-android: androidcommon
+android:
 	cd $(ANDROID_DIR) && ./gradlew assembleDebug
-	cp $(ANDROID_DIR)/build/outputs/apk/$(ANDROID_PACKAGE).$(ANDROID_PROJECT_NAME)-$(VERSION)-debug.apk .
+	cp $(ANDROID_DIR)/build/outputs/apk/debug/$(ANDROID_PACKAGE).$(ANDROID_PROJECT_NAME)-$(VERSION)-debug.apk .
 	echo "android build is EXPERIMENTAL. Use it at your own risk"
 
-androidrelease: androidcommon
+androidrelease:
 	cd $(ANDROID_DIR) && ./gradlew assembleRelease --no-daemon
-	cp $(ANDROID_DIR)/build/outputs/apk/$(ANDROID_PACKAGE).$(ANDROID_PROJECT_NAME)-$(VERSION)-release.apk .
+	cp $(ANDROID_DIR)/build/outputs/apk/release/$(ANDROID_PACKAGE).$(ANDROID_PROJECT_NAME)-$(VERSION)-release.apk .
 	echo "android build is EXPERIMENTAL. Use it at your own risk"
 
 astyle:
 	astyle --options=astylerc *.h *.c
+
+.PHONY: android androidrelease

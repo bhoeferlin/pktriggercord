@@ -1,6 +1,6 @@
 /*
     pkTriggerCord
-    Copyright (C) 2011-2018 Andras Salamon <andras.salamon@melda.info>
+    Copyright (C) 2011-2019 Andras Salamon <andras.salamon@melda.info>
     Remote control of Pentax DSLR cameras.
 
     based on:
@@ -29,12 +29,10 @@
 #ifndef PKTRIGGERCORD_SERVERMODE_H
 #define PKTRIGGERCORD_SERVERMODE_H
 
-int servermode_socket();
+int servermode_socket(int servermode_timeout);
 
-pslr_handle_t camera_connect( char *model, char *device, int timeout, char *error_message );
+pslr_handle_t pslr_camera_connect( char *model, char *device, int timeout, char *error_message );
 
-void camera_close(pslr_handle_t camhandle);
-
-long int timeval_diff(struct timeval *t2, struct timeval *t1);
+void pslr_camera_close(pslr_handle_t camhandle);
 
 #endif

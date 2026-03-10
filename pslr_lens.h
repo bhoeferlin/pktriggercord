@@ -1,6 +1,6 @@
 /*
     pkTriggerCord
-    Copyright (C) 2011-2018 Andras Salamon <andras.salamon@melda.info>
+    Copyright (C) 2011-2019 Andras Salamon <andras.salamon@melda.info>
     Remote control of Pentax DSLR cameras.
 
     based on:
@@ -30,5 +30,5 @@
 
 #include <stdint.h>
 
-const char *get_lens_name( uint32_t id1, uint32_t id2);
+const char *pslr_get_lens_name( uint32_t id1, uint32_t id2);
 #endif

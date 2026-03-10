@@ -1,6 +1,6 @@
 /*
     pkTriggerCord
-    Copyright (C) 2011-2018 Andras Salamon <andras.salamon@melda.info>
+    Copyright (C) 2011-2019 Andras Salamon <andras.salamon@melda.info>
     Remote control of Pentax DSLR cameras.
 
     based on:
@@ -29,17 +29,9 @@
 #include <stdarg.h>
 #include <sys/types.h>
 #include <stdlib.h>
-
+#include <stdbool.h>
 #include <stdarg.h>
 #include <stddef.h>
-
-#if _MSC_VER < 1900
-typedef int bool;
-#	define false 0
-#	define true 1
-#else
-#   include <stdbool.h>
-#endif
 
 #include "pslr_scsi.h"
 
@@ -76,6 +68,21 @@ char **get_drives(int *driveNum) {
     int driveLetter;
     int j=0;
     for ( driveLetter = 'C'; driveLetter<='Z'; ++driveLetter ) {
+#ifdef RAD10
+// These Drive types cant be a Pentax. The RAD10 debugger breaks here.
+        TCHAR root[4];
+        snprintf(root, 4, "%c:\\", driveLetter);
+        switch (GetDriveType(root)) {
+            case  DRIVE_UNKNOWN:
+            case  DRIVE_NO_ROOT_DIR:
+            case  DRIVE_FIXED:
+            case  DRIVE_REMOTE:
+            case  DRIVE_CDROM:
+                continue;
+            default:
+                ;
+        }
+#endif
         ret[j] = malloc( 2 * sizeof (char) );
         snprintf(ret[j], 2, "%c", driveLetter);
         ++j;
@@ -84,9 +91,9 @@ char **get_drives(int *driveNum) {
     return ret;
 }
 
-pslr_result get_drive_info(char* driveName, FDTYPE * hDevice,
-                           char* vendorId, int vendorIdSizeMax,
-                           char* productId, int productIdSizeMax
+pslr_result get_drive_info(char* drive_name, int* device,
+                           char* vendor_id, int vendor_id_size_max,
+                           char* product_id, int product_id_size_max
                           ) {
     bool Status;
     STORAGE_PROPERTY_QUERY query;
@@ -97,29 +104,20 @@ pslr_result get_drive_info(char* driveName, FDTYPE * hDevice,
     HANDLE hDrive;
     char fullDriveName[7];
 
-    vendorId[0] = '\0';
-    productId[0] = '\0';
+    vendor_id[0] = '\0';
+    product_id[0] = '\0';
     query.PropertyId = StorageDeviceProperty;
     query.QueryType = PropertyStandardQuery;
 
-    snprintf( fullDriveName, 7, "\\\\.\\%s:", driveName);
+    snprintf( fullDriveName, 7, "\\\\.\\%s:", drive_name);
 
-#ifdef _WIN64
-	wchar_t fullDriveName_wchar[20];
-	size_t convertedCharsCount;
-	mbstowcs_s(&convertedCharsCount, fullDriveName_wchar, 20, fullDriveName, strlen(fullDriveName) + 1); //Plus null
-	LPWSTR fullDriveName_conv = fullDriveName_wchar;
-#else
-	char* fullDriveName_conv = fullDriveName;
-#endif
-
-	hDrive = CreateFile(fullDriveName_conv,
-		GENERIC_READ | GENERIC_WRITE,
-		FILE_SHARE_WRITE,
-		NULL,
-		OPEN_EXISTING,
-		0,
-		NULL);
+    hDrive = CreateFile(fullDriveName,
+                        GENERIC_READ | GENERIC_WRITE,
+                        FILE_SHARE_WRITE,
+                        NULL,
+                        OPEN_EXISTING,
+                        0,
+                        NULL);
 
     if (hDrive != INVALID_HANDLE_VALUE) {
         Status = DeviceIoControl(hDrive,
@@ -136,7 +134,7 @@ pslr_result get_drive_info(char* driveName, FDTYPE * hDevice,
                 CancelIo(hDrive);
             }
         } else {
-            *hDevice = (LONG_PTR)hDrive;
+            *device = (int)hDrive;
             drive_status = PSLR_OK;
 
             pdescriptor = (STORAGE_DEVICE_DESCRIPTOR *)descriptorBuf;
@@ -144,41 +142,33 @@ pslr_result get_drive_info(char* driveName, FDTYPE * hDevice,
             if (pdescriptor->VendorIdOffset != 0) {
                 int i = 0;
                 while ((descriptorBuf[pdescriptor->VendorIdOffset + i] != 0)
-                        &&(i < vendorIdSizeMax)
+                        &&(i < vendor_id_size_max)
                       ) {
-                    vendorId[i] = descriptorBuf[pdescriptor->VendorIdOffset + i];
+                    vendor_id[i] = descriptorBuf[pdescriptor->VendorIdOffset + i];
                     i++;
                 }
-                vendorId[i]='\0';
+                vendor_id[i]='\0';
             }
             if (pdescriptor->ProductIdOffset != 0) {
                 int i = 0;
                 while ((descriptorBuf[pdescriptor->ProductIdOffset + i] != 0)
-                        &&(i < productIdSizeMax)
+                        &&(i < product_id_size_max)
                       ) {
-                    productId[i] = descriptorBuf[pdescriptor->ProductIdOffset + i];
+                    product_id[i] = descriptorBuf[pdescriptor->ProductIdOffset + i];
                     i++;
                 }
-                productId[i]='\0';
+                product_id[i]='\0';
             }
         }
     }
-	else
-	{
-		*hDevice = INVALID_HANDLE_VALUE;
-	}
     return drive_status;
 }
 
-void close_drive(FDTYPE *hDevice) 
-{
-	if (hDevice != INVALID_HANDLE_VALUE)
-	{
-		CloseHandle((HANDLE)*hDevice);
-	}
+void close_drive(int *device) {
+    CloseHandle((HANDLE)*device);
 }
 
-int scsi_read(FDTYPE sg_fd, uint8_t *cmd, uint32_t cmdLen,
+int scsi_read(int sg_fd, uint8_t *cmd, uint32_t cmdLen,
               uint8_t *buf, uint32_t bufLen) {
     SCSI_PASS_THROUGH_WITH_BUFFER sptdwb;
     DWORD outByte=0;
@@ -208,7 +198,7 @@ int scsi_read(FDTYPE sg_fd, uint8_t *cmd, uint32_t cmdLen,
                            sizeof(sptdwb),
                            &sptdwb,
                            sizeof(sptdwb),
-                           &outByte ,
+                           &outByte,
                            NULL);
     if (Status==0) {
         LastError = GetLastError();
@@ -230,7 +220,7 @@ int scsi_read(FDTYPE sg_fd, uint8_t *cmd, uint32_t cmdLen,
     }
 }
 
-int scsi_write(FDTYPE sg_fd, uint8_t *cmd, uint32_t cmdLen,
+int scsi_write(int sg_fd, uint8_t *cmd, uint32_t cmdLen,
                uint8_t *buf, uint32_t bufLen) {
     SCSI_PASS_THROUGH_WITH_BUFFER sptdwb;
     DWORD outByte=0;
@@ -259,7 +249,7 @@ int scsi_write(FDTYPE sg_fd, uint8_t *cmd, uint32_t cmdLen,
                            sizeof(sptdwb),
                            &sptdwb,
                            sizeof(sptdwb),
-                           &outByte ,
+                           &outByte,
                            NULL);
     if (Status==0) {
         LastError = GetLastError();

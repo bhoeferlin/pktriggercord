@@ -1,5 +1,5 @@
 %define name      pktriggercord	
-%define ver       0.84.05
+%define ver       0.85.01
 %define rel       1
 %define prefix    /usr
 %define debug_package %{nil}
@@ -22,7 +22,7 @@ Version: %ver
 Release: %rel
 License: LGPL
 Group: Applications/Tools
-Source: https://github.com/asalamon74/pktriggercord/releases/download/v%ver/pkTriggerCord-%ver.src.tar.gz
+Source: https://github.com/asalamon74/pktriggercord/releases/download/v%{ver}/pkTriggerCord-%{ver}.src.tar.gz
 URL: http://pktriggercord.melda.info/
 Packager: Andras Salamon <andras.salamon@melda.info>
 BuildRoot: /var/tmp/%{name}-root
@@ -40,15 +40,15 @@ make clean
 make PREFIX=%{prefix}
 
 %install
-rm -rf $RPM_BUILD_ROOT
+rm -rf ${RPM_BUILD_ROOT}
 make install PREFIX=%{prefix} DESTDIR=${RPM_BUILD_ROOT}
 
 %post
-(which setcap && setcap CAP_SYS_RAWIO+eip /usr/bin/pktriggercord-cli) || true
-(which setcap && setcap CAP_SYS_RAWIO+eip /usr/bin/pktriggercord) || true
+(which setcap && setcap CAP_SYS_RAWIO+eip %{prefix}/bin/pktriggercord-cli) || true
+(which setcap && setcap CAP_SYS_RAWIO+eip %{prefix}/bin/pktriggercord) || true
 
 %clean
-rm -rf $RPM_BUILD_ROOT
+rm -rf ${RPM_BUILD_ROOT}
 
 %files
 %defattr(-,root,root)
@@ -59,6 +59,8 @@ rm -rf $RPM_BUILD_ROOT
 %prefix/../etc/*
 
 %changelog
+* Sun Jan 27 2019 Andras Salamon <andras.salamon@melda.info>
+- built from pkTriggerCord 0.85.00
 * Sat May 13 2017 Andras Salamon <andras.salamon@melda.info>
 - built from pkTriggerCord 0.84.04
 * Mon Oct 31 2016 Andras Salamon <andras.salamon@melda.info>

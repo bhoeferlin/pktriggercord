@@ -1,6 +1,6 @@
 /*
     pkTriggerCord
-    Copyright (C) 2011-2018 Andras Salamon <andras.salamon@melda.info>
+    Copyright (C) 2011-2019 Andras Salamon <andras.salamon@melda.info>
     Remote control of Pentax DSLR cameras.
 
     based on:
@@ -23,11 +23,10 @@
     and GNU Lesser General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#ifdef WIN32
+#if defined(WIN32) || defined(RAD10)
 #include "pslr_scsi_win.c"
 #else
-// Ugly hack. More generic ifs required
+/* Ugly hack. More generic ifs required */
 #ifdef __OpenBSD__
 #include "pslr_scsi_openbsd.c"
 #else
