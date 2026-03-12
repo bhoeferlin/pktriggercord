@@ -33,18 +33,23 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define _CRT_NONSTDC_NO_DEPRECATE
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <fcntl.h>
-#ifndef RAD10
+#include <sys/types.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <unistd.h>
 #endif
 #include "js0n.h"
-#include <sys/types.h>
-#include <sys/stat.h>
 
 #include "pslr_model.h"
 #include "pslr_log.h"
@@ -144,21 +149,28 @@ void set_uint32_be(uint32_t v, uint8_t *buf) {
 char *pslr_hexdump(uint8_t *buf, uint32_t bufLen) {
     char *ret = malloc(4*bufLen);
     uint32_t i;
-    sprintf(ret,"%s","");
+    size_t bufsize = 4*bufLen;
+    size_t pos = 0;
+    int written = snprintf(ret + pos, bufsize - pos, "%s", "");
+    if (written > 0) pos += written;
     for (i = 0; i < bufLen; i++) {
         if (i % 16 == 0) {
-            sprintf(ret+strlen(ret),"0x%04x | ", i);
+            written = snprintf(ret + pos, bufsize - pos, "0x%04x | ", i);
+            if (written > 0) pos += written;
         }
-        sprintf(ret+strlen(ret), "%02x ", buf[i]);
+        written = snprintf(ret + pos, bufsize - pos, "%02x ", buf[i]);
+        if (written > 0) pos += written;
         if (i % 8 == 7) {
-            sprintf(ret+strlen(ret), " ");
+            written = snprintf(ret + pos, bufsize - pos, " ");
+            if (written > 0) pos += written;
         }
         if (i % 16 == 15) {
-            sprintf(ret+strlen(ret), "\n");
+            written = snprintf(ret + pos, bufsize - pos, "\n");
+            if (written > 0) pos += written;
         }
     }
     if (i % 16 != 15) {
-        sprintf(ret+strlen(ret), "\n");
+        snprintf(ret + pos, bufsize - pos, "\n");
     }
     return ret;
 }
@@ -808,7 +820,7 @@ char *read_json_file(int *jsonsize) {
     *jsonsize = lseek(jsonfd, 0, SEEK_END);
     lseek(jsonfd, 0, SEEK_SET);
     char *jsontext=malloc(*jsonsize);
-    ssize_t ret = read(jsonfd, jsontext, *jsonsize);
+    size_t ret = read(jsonfd, jsontext, *jsonsize);
     if (ret < *jsonsize) {
         fprintf(stderr, "Could not read pentax_settings.json file\n");
         free(jsontext);

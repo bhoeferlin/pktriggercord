@@ -236,7 +236,7 @@ const char *get_pslr_str( const char** array, int length, int value ) {
         return array[value];
     } else {
         char *ret = malloc(128);
-        sprintf (ret, "Unknown value: %d", value);
+        snprintf (ret, 128, "Unknown value: %d", value);
         return ret;
     }
 }
@@ -296,10 +296,10 @@ char *pslr_get_af11_point_str( uint32_t value ) {
     }
     int bitidx=0;
     char *ret = malloc(1024);
-    int pos = sprintf(ret, "%s", "");
+    int pos = snprintf(ret, 1024, "%s", "");
     while (value>0 && bitidx<11) {
         if ((value & 0x01) == 1) {
-            int written = sprintf(ret + pos, "%s%s", pos == 0 ? "" : ",", pslr_af11_point_str[bitidx]);
+            int written = snprintf(ret + pos, 1024 - pos, "%s%s", pos == 0 ? "" : ",", pslr_af11_point_str[bitidx]);
             if (written < 0) {
                 return ret;
             }
@@ -309,7 +309,7 @@ char *pslr_get_af11_point_str( uint32_t value ) {
         ++bitidx;
     }
     if (value>0) {
-        sprintf(ret, "%s", "invalid");
+        snprintf(ret, 1024, "%s", "invalid");
     }
     return ret;
 }

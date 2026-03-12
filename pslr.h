@@ -36,6 +36,10 @@
 #ifndef PSLR_H
 #define PSLR_H
 
+#ifdef _WIN32
+#include "compatibility/usleep.h"
+#endif
+
 #include "pslr_enum.h"
 #include "pslr_scsi.h"
 #include "pslr_model.h"

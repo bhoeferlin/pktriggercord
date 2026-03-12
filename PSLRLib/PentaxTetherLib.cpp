@@ -1329,7 +1329,7 @@ std::string PentaxTetherLib::Impl::getCameraName()
 	{
 		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
 
-		camName = std::string(pslr_camera_name(camhandle_));
+		camName = std::string(pslr_get_camera_name(camhandle_));
 	}
 	return camName;
 }
@@ -1345,7 +1345,7 @@ std::string PentaxTetherLib::Impl::getFirmware()
 		char firmware_buffer[16];
 		std::fill( &(firmware_buffer[0]), &(firmware_buffer[15]), 0);
 
-		pslr_read_dspinfo(&camhandle_, firmware_buffer);
+		pslr_get_dspinfo(&camhandle_, firmware_buffer);
 		firmware = std::string(firmware_buffer);
 	}
 	return firmware;
@@ -1360,7 +1360,7 @@ std::string PentaxTetherLib::Impl::getLensType()
 		auto status = pollStatus(false);
 		if (nullptr != status)
 		{
-			lensName = std::string(get_lens_name(status->lens_id1, status->lens_id2));
+            lensName = std::string(pslr_get_lens_name(status->lens_id1, status->lens_id2));
 		}
 	}
 	return lensName;
@@ -1756,7 +1756,7 @@ bool PentaxTetherLib::Impl::setExposureCompensation(const PentaxTetherLib::Ratio
 		{
 			std::lock_guard<std::mutex> lock(camCommunicationMutex_);
 
-			return testResult(pslr_set_ec(camhandle_, toPSLR(ecValue)));
+			return testResult(pslr_set_expose_compensation(camhandle_, toPSLR(ecValue)));
 		}
 	}
 
@@ -1938,7 +1938,7 @@ bool PentaxTetherLib::Impl::setSelectedAutoFocusPointIndex(const std::vector<uin
 	{
 		std::lock_guard<std::mutex> lock(camCommunicationMutex_);
 
-		return testResult(pslr_select_af_point(camhandle_, encodedAFPoints));
+		return testResult(pslr_set_selected_af_point(camhandle_, encodedAFPoints));
 	}
 
 	return false;

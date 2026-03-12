@@ -7,7 +7,7 @@
 #include <winsock2.h>
 
 int gettimeofday(struct timeval* t,void* timezone);
-void usleep(int secs);
+
 
 // from linux's sys/times.h
 

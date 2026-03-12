@@ -30,13 +30,9 @@
 #ifndef PKTRIGGERCORD_COMMON_H
 #define PKTRIGGERCORD_COMMON_H
 
-#ifdef RAD10
-#include <utime.h>
-#else
+#ifndef RAD10
 #include <sys/time.h>
 #endif
-#include <time.h>
-#include <math.h>
 
 #include "pslr_model.h"
 
