@@ -251,10 +251,10 @@ public:
 	static constexpr int32_t InvalidBufferIndex{ -1 };
 
 
-	PentaxTetherLib::PentaxTetherLib(const PentaxTetherLib::Options& options);
-	PentaxTetherLib::~PentaxTetherLib();
-	PentaxTetherLib::PentaxTetherLib(PentaxTetherLib &&) noexcept = delete;
-	PentaxTetherLib& PentaxTetherLib::operator=(PentaxTetherLib &&) noexcept = delete;
+	PentaxTetherLib(const PentaxTetherLib::Options& options);
+	~PentaxTetherLib();
+	PentaxTetherLib(PentaxTetherLib &&) noexcept = delete;
+	PentaxTetherLib& operator=(PentaxTetherLib &&) noexcept = delete;
 
     /**
      * @param cancelationFlag - if not null, this atomic bool will be stored as member (attention on scope!) and used
